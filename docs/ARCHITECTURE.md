@@ -75,10 +75,10 @@ OmniLock uses a **single-process Tauri architecture** with a dual-threaded Rust 
 
 ### 2.5 File / Folder Encryption Locking (v0.0.35 — replaced ACL locking)
 - **Method:** AES-256-GCM authenticated encryption via the `aes-gcm` crate. No NTFS ACL modification.
-- **Lock file:** reads the file, encrypts with a fresh 96-bit nonce, writes `original.omnilock`, deletes the original.
+- **Lock file:** reads the file, encrypts with a fresh 96-bit nonce, writes `original.omnilock`, hides it (`FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM`), deletes the original.
 - **Blob layout:** `[4] "OLCK" | [1] version=1 | [12] nonce | [4] path_len (u32 LE) | [N] original path (UTF-8) | [*] ciphertext + 16-byte tag`.
 - **Folder lock:** recursive encrypt of every file inside; the folder itself stays browsable (`desktop.ini` and existing `.omnilock` blobs are skipped).
-- **Unlock:** recursive decrypt (blob → original path from the embedded header, blob deleted).
+- **Unlock:** recursive decrypt (blob → original path from the embedded header, blob deleted). Before reading, the blob's hidden+system attributes are removed (`show_blob`).
 - **Key flow:** `cmd_unlock_session` / `cmd_biometric_login` / `cmd_widget_unlock` load `file_encryption_key` into `AppState.file_key` + `ACTIVE_FILE_KEY`. All lock/unlock commands require it.
 - **Widget auto-relock:** `cmd_widget_unlock` temporarily lifts the lock without touching the vault; on widget focus-lost the target is re-encrypted via `WIDGET_TEMP_UNLOCKED` + `ACTIVE_FILE_KEY`.
 - **`.omnilock` file association:** `shell_context.rs` registers the extension → `OmniLock.exe --open-locked "%1"`; the setup hook stores the path and the unlock widget appears after login.
@@ -159,6 +159,7 @@ All commands return `Result<T, String>` with human-readable error messages. Ever
 | `cmd_force_unlock` | `path` | `Result<String, String>` | Take ownership + reset DACL (stubborn files) |
 | `cmd_rescue_unlock` | `path` | `Result<String, String>` | Rescue mode — needs session + file key |
 | `cmd_widget_unlock` | `password` | `Result<(), String>` | Temp-unlock target; auto re-locks on widget close |
+| `cmd_widget_unlock_biometric` | None | `Result<(), String>` | Biometric temp-unlock via Windows Hello; auto re-locks on widget close |
 | `cmd_authenticate_biometric` | `message` | `Result<bool, String>` | Windows Hello fingerprint verification (`UserConsentVerifier` via PowerShell 5.1) — direct WBF is dead on this hardware (driver ignores background-app captures) |
 | `cmd_check_biometric` | None | `BiometricStatus` | `UserConsentVerifier.CheckAvailabilityAsync()` (WinRT) — registry checks unreliable on Win11 (keys absent) |
 | `cmd_verify_locked_state` | None | `Vec<UnlockTarget>` | Stale entries: vault says locked, disk has no `.omnilock` blob |
@@ -180,6 +181,11 @@ All commands return `Result<T, String>` with human-readable error messages. Ever
 | `cmd_list_drives` | None | `Vec<String>` | Available drive letters A-Z |
 | `cmd_list_processes` | None | `Vec<(String, String, String)>` | Process scan (name, path, sha256) |
 | `cmd_set_auto_lock` | `minutes` | `Result<(), String>` | Set auto-lock timer |
+| `cmd_set_lock_on_screen_lock` | `enabled` | `Result<(), String>` | Toggle lock on Windows screen lock (Win+L) |
+| `cmd_list_hidden_blobs` | None | `Result<Vec<String>, String>` | Scan for all .omnilock and .vaultfile blobs on disk |
+| `cmd_context_menu_lock` | `path` | `Result<String, String>` | Lock file/folder from Explorer context menu |
+| `cmd_context_menu_unlock` | `path` | `Result<String, String>` | Unlock file/folder from Explorer context menu |
+| `cmd_get_user_profile` | None | `Result<String, String>` | Get USERPROFILE env var path |
 | `cmd_get_security_question` | None | `Result<String, String>` | Get stored recovery question |
 | `cmd_reset_password` | `new_password, answer` | `Result<(), String>` | Full password reset via security Q&A |
 
@@ -200,7 +206,8 @@ All components are under `src/components/`:
 | `pages/AppLockerPage.tsx` | ~169 | Process scan/lock/toggle/remove |
 | `pages/PresetsPage.tsx` | ~93 | System preset toggles + installer guard |
 | `pages/VaultPage.tsx` | ~196 | Drive volumes + file/folder management |
-| `pages/SecurityPage.tsx` | ~231 | 2FA config, auto-lock, recovery tiers |
+| `pages/SecurityPage.tsx` | ~231 | 2FA config, auto-lock, lock-on-screen-lock, recovery tiers |
+| `pages/HiddenItemsPage.tsx` | ~80 | Hidden .omnilock blob scanner |
 | `shared/Field.tsx` | ~12 | Form field with label + icon |
 | `shared/Toggle.tsx` | ~9 | Controlled toggle switch |
 | `shared/SectionHeader.tsx` | ~9 | Page section header |

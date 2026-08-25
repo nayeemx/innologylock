@@ -34,6 +34,7 @@ export interface VaultConfigDto {
   cloud_sync_enabled: boolean;
   github_username: string;
   biometric_enabled: boolean;
+  lock_on_screen_lock: boolean;
 }
 
 export interface WatchdogStatusDto {
@@ -152,6 +153,10 @@ export async function listDrives(): Promise<string[]> {
   return invoke("cmd_list_drives");
 }
 
+export async function getUserProfile(): Promise<string> {
+  return invoke("cmd_get_user_profile");
+}
+
 export async function listProcesses(): Promise<[string, string, string][]> {
   return invoke("cmd_list_processes");
 }
@@ -162,6 +167,22 @@ export async function listInstalledApps(): Promise<[string, string, string][]> {
 
 export async function setAutoLock(minutes: number): Promise<void> {
   return invoke("cmd_set_auto_lock", { minutes });
+}
+
+export async function setLockOnScreenLock(enabled: boolean): Promise<void> {
+  return invoke("cmd_set_lock_on_screen_lock", { enabled });
+}
+
+export async function listHiddenBlobs(): Promise<string[]> {
+  return invoke("cmd_list_hidden_blobs");
+}
+
+export async function contextMenuLock(path: string): Promise<string> {
+  return invoke("cmd_context_menu_lock", { path });
+}
+
+export async function contextMenuUnlock(path: string): Promise<string> {
+  return invoke("cmd_context_menu_unlock", { path });
 }
 
 export async function getSecurityQuestion(): Promise<string> {
@@ -224,6 +245,10 @@ export async function hideWidget(): Promise<void> {
 
 export async function widgetUnlock(password: string): Promise<void> {
   return invoke("cmd_widget_unlock", { password });
+}
+
+export async function widgetUnlockBiometric(): Promise<void> {
+  return invoke("cmd_widget_unlock_biometric");
 }
 
 export async function checkForUpdates(): Promise<{ available: boolean; version?: string; notes?: string } | null> {

@@ -398,4 +398,38 @@ Issues encountered during OmniLock development. Each entry follows: Symptoms →
 
 ---
 
-Last updated: 2026-08-16
+### v0.0.38: Android-Inspired App Lock, Fingerprint Widget, Hidden Blobs
+**Date:** 2026-08-24
+**Status:** ✅ IMPLEMENTED — compiles clean, not yet tested on hardware.
+
+**What was built:**
+1. **Auto-relaunch after app unlock**: `AUTO_RELAUNCH_APP` static stores the exe path after widget unlock of an app target. On widget focus-lost, the exe is spawned before re-encrypting. No more manual re-launching.
+2. **Fingerprint in UnlockWidget**: `cmd_widget_unlock_biometric` (async, uses `biometric::authenticate_biometric` Windows Hello prompt + `biometric::load_biometric_token` for the password). `UnlockWidget.tsx` shows "Use Fingerprint" button when biometric hardware is available, with an "or" divider.
+3. **Hidden blobs**: `file_locker.rs` `hide_blob`/`show_blob` use `SetFileAttributesW` (`FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM`) on `.omnilock` blobs after writing. Blobs disappear from Explorer by default. Attributes restored before unlock.
+
+**Files Changed:** `src-tauri/src/file_locker.rs`, `src-tauri/src/lib.rs`, `src/components/widget/UnlockWidget.tsx`, `src/lib/tauri-bridge.ts`, `AGENTS.md`, `CHANGELOG.md`, `docs/DEV_LOG.md`, `docs/ARCHITECTURE.md`, `docs/INSTRUCTION.md`
+
+**Prevention:** `SetFileAttributesW` requires `use windows_sys::Win32::Storage::FileSystem::SetFileAttributesW` inside the function body (not top-level — the module is not imported at file level in `file_locker.rs`). Biometric commands returning Futures must be `async fn` in Tauri.
+
+---
+
+### v0.0.39: Context Menu Infinite Loop Fix, Hidden Items, Screen Lock, App Data Lock, Notifications
+**Date:** 2026-08-25
+**Status:** ✅ IMPLEMENTED — compiles clean, not yet tested on hardware.
+
+**What was built:**
+1. **Context menu fix**: `--context-menu-lock` in `main.rs` called `shell_context::handle_context_menu_lock` which spawned `OmniLock.exe --lock-action` which called the same function again → infinite loop (no lock ever happened). Fixed by replacing with file-based dispatch: `dispatch_context_action` writes `action\npath` to `context_action.txt` in the vault dir; the running app polls this file every 2 seconds via a background thread and emits a `context-action` Tauri event to the frontend.
+2. **Hidden Items page**: new `HiddenItemsPage.tsx` component (new "Hidden Items" tab) scans common user directories for `.omnilock` files and vault storage for `.vaultfile` blobs. Shows file name, location, and blob type (OLCK/OVLF).
+3. **Lock on Screen Lock**: `auto_lock.rs` now spawns a hidden window that listens for `WM_WTSSESSION_CHANGE` messages via `WTSRegisterSessionNotification`. When `SESSION_LOCK` (0x7) is received, calls `relock_all_unlocked_folders()`. New `lock_on_screen_lock` field in `VaultConfig` + `cmd_set_lock_on_screen_lock` command + toggle in Security page.
+4. **App data lock**: "Lock Data" button on each locked app in AppLockerPage. Extracts the exe name, looks for `AppData\Local\<name>` and `AppData\Roaming\<name>`, and locks any that exist via `addLockedFolder`.
+5. **Lock event notifications**: frontend listens for `app-blocked` Tauri events (already emitted by process_guard.rs when a locked app is killed) and shows a toast notification.
+6. **New Rust commands**: `cmd_set_lock_on_screen_lock`, `cmd_list_hidden_blobs`, `cmd_context_menu_lock`, `cmd_context_menu_unlock`, `cmd_get_user_profile`.
+7. **New frontend bridge functions**: `setLockOnScreenLock`, `listHiddenBlobs`, `contextMenuLock`, `contextMenuUnlock`, `getUserProfile`.
+
+**Files Changed:** `src-tauri/src/main.rs`, `src-tauri/src/lib.rs`, `src-tauri/src/shell_context.rs`, `src-tauri/src/auto_lock.rs`, `src-tauri/src/models.rs`, `src/lib/tauri-bridge.ts`, `src/App.tsx`, `src/components/types.ts`, `src/components/pages/HiddenItemsPage.tsx`, `src/components/pages/SecurityPage.tsx`, `src/components/pages/AppLockerPage.tsx`, `AGENTS.md`, `CHANGELOG.md`, `PROMPTS.md`
+
+**Prevention:** Context menu handlers that spawn new processes must NOT call functions that re-spawn the same process. Use file-based IPC or Tauri event system for cross-process communication. Hidden window message loops for session notification need `WTSRegisterSessionNotification` called after `CreateWindowExA` succeeds.
+
+---
+
+Last updated: 2026-08-25

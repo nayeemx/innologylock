@@ -35,6 +35,27 @@ fn to_wide(s: &str) -> Vec<u16> {
 
 const MAGIC: &[u8; 4] = b"OLCK";
 
+/// Set HIDDEN + SYSTEM attributes on a file so it disappears from Explorer.
+fn hide_blob(path: &str) {
+    use std::os::windows::ffi::OsStrExt;
+    use std::ffi::OsStr;
+    use windows_sys::Win32::Storage::FileSystem::SetFileAttributesW;
+    const FILE_ATTRIBUTE_HIDDEN: u32 = 0x02;
+    const FILE_ATTRIBUTE_SYSTEM: u32 = 0x04;
+    let wide: Vec<u16> = OsStr::new(path).encode_wide().chain(std::iter::once(0)).collect();
+    unsafe { SetFileAttributesW(wide.as_ptr(), FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM); }
+}
+
+/// Remove HIDDEN + SYSTEM attributes so the file is visible again.
+fn show_blob(path: &str) {
+    use std::os::windows::ffi::OsStrExt;
+    use std::ffi::OsStr;
+    use windows_sys::Win32::Storage::FileSystem::SetFileAttributesW;
+    const FILE_ATTRIBUTE_NORMAL: u32 = 0x80;
+    let wide: Vec<u16> = OsStr::new(path).encode_wide().chain(std::iter::once(0)).collect();
+    unsafe { SetFileAttributesW(wide.as_ptr(), FILE_ATTRIBUTE_NORMAL); }
+}
+
 /// Returns the path of the encrypted blob for a given original path.
 pub fn encrypted_path_for(path: &str) -> String {
     format!("{}.omnilock", path)
@@ -123,6 +144,7 @@ pub fn lock_file(path: &str, key_material: &[u8]) -> Result<String, String> {
     let enc_path = encrypted_path_for(path);
     write_blob(&enc_path, &nonce, path, &ciphertext)?;
     fs::remove_file(path).map_err(|e| format!("Cannot remove original after encrypt: {e}"))?;
+    hide_blob(&enc_path);
     crate::logger::log("LOCK", &format!("lock_file encrypted: {path} -> {enc_path}"));
     Ok(enc_path)
 }
@@ -142,6 +164,7 @@ pub fn unlock_file(path: &str, key_material: &[u8]) -> Result<String, String> {
     };
 
     let (nonce, original_path, ciphertext) = read_blob(&blob_path)?;
+    show_blob(&blob_path);
     let plaintext = do_decrypt(&ciphertext, key_material, &nonce)?;
 
     // Ensure parent directory exists

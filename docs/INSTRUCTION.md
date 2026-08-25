@@ -199,6 +199,11 @@ If Rust check fails, read the error — it will tell you the exact file and line
 14. **Vault storage reuses the file key (v0.0.36):** `vault_storage.rs` calls `file_locker::do_encrypt/do_decrypt` + `check_protected_path` (they are `pub`). Keep the OVLF/OVMF formats and the "delete original only after blob written" ordering intact — data loss otherwise.
 15. **Stale-unlock flow (v0.0.36):** never auto-re-encrypt entries silently. After login show the Re-lock all / Keep unlocked choice (`cmd_verify_locked_state` → `cmd_relock_entries` / `cmd_forget_unlocked_entries`).
 16. **Biometric availability (v0.0.37):** `check_biometric_available` MUST use `UserConsentVerifier.CheckAvailabilityAsync()` (WinRT, PowerShell 5.1 + AsTask). Registry checks (`WindowsHello\Enabled`, `Bio\Credential Provider`) are unreliable — both keys are absent on Windows 11 machines where Hello works fine (proven on the HP 850 G5), which made v0.0.36 wrongly report "Windows Hello is not available".
+17. **Locked blobs are hidden (v0.0.38):** `file_locker.rs` `hide_blob` sets `FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM` on `.omnilock` blobs after writing. `show_blob` restores `FILE_ATTRIBUTE_NORMAL` before reading. Never skip the hide/show calls — locked items must be invisible in Explorer.
+18. **App auto-relaunch (v0.0.38):** after widget unlock of an app target, `AUTO_RELAUNCH_APP` stores the exe path. On widget focus-lost, the app is spawned before re-locking. The widget success message says "Launching application..." for app targets.
+19. **Context menu uses file-based IPC (v0.0.39):** `shell_context::dispatch_context_action` writes `action\npath` to `context_action.txt` in the vault dir. A background thread in the setup hook polls this file every 2 seconds and emits a `context-action` Tauri event to the frontend. The old approach (spawning `--lock-action` which re-spawned the same handler) caused an infinite loop. Do NOT re-introduce process-spawning context menu handlers.
+20. **Lock on screen lock (v0.0.39):** `auto_lock.rs` spawns a hidden window that listens for `WM_WTSSESSION_CHANGE` via `WTSRegisterSessionNotification`. On `SESSION_LOCK` (0x7), calls `relock_all_unlocked_folders()`. Controlled by `VaultConfig.lock_on_screen_lock` + `cmd_set_lock_on_screen_lock`.
+21. **Hidden Items page (v0.0.39):** scans `USERPROFILE\Desktop`, `Documents`, `Downloads`, `Pictures`, `Music`, `Videos` for `.omnilock` files and vault `storage\` for `.vaultfile` blobs. Shows them in a dedicated "Hidden Items" tab.
 
 ---
 
@@ -216,6 +221,7 @@ If Rust check fails, read the error — it will tell you the exact file and line
 11. Do not use empty `catch {}` blocks — every call must show feedback to the user.
 12. Do not name local state variables the same as imported bridge functions.
 13. Do not end a session without updating the `.md` files (AGENTS.md / CHANGELOG.md / DEV_LOG.md).
+14. Do not start a session without reading `PROMPTS.md` to know the last user prompt and resume from there. Record every new user prompt in `PROMPTS.md` with a timestamp — this ensures session continuity.
 
 ---
 

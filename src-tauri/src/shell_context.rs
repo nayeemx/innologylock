@@ -131,50 +131,38 @@ pub fn uninstall() -> Result<(), String> {
     Ok(())
 }
 
-pub fn handle_context_menu_lock(path: &str) -> Result<String, String> {
+/// Write a pending context menu action to a temp file that the running OmniLock
+/// instance can pick up. This avoids the infinite-loop problem where spawning
+/// a new process would call the same handler again.
+pub fn dispatch_context_action(action: &str, path: &str) -> Result<String, String> {
+    use std::io::Write;
+
     let p = Path::new(path);
     if !p.exists() {
         return Err(format!("Path does not exist: {}", path));
     }
 
-    logger::log("MENU", &format!("Context menu lock: {}", path));
+    logger::log("MENU", &format!("Context menu {}: {}", action, path));
 
+    // Write action to a temp file in the vault dir — the running app polls this.
+    let vault_dir = crate::vault::vault_dir();
+    let _ = std::fs::create_dir_all(&vault_dir);
+    let action_file = vault_dir.join("context_action.txt");
+    let mut f = std::fs::File::create(&action_file)
+        .map_err(|e| format!("Cannot create action file: {}", e))?;
+    writeln!(f, "{}\n{}", action, path)
+        .map_err(|e| format!("Cannot write action file: {}", e))?;
+
+    // If OmniLock is not running, start it — it will read the action file on startup.
+    // If it is already running, it will pick up the file on its next poll.
     let exe_path = std::env::current_exe()
         .map_err(|e| format!("Cannot get exe path: {}", e))?;
     let exe_str = exe_path.to_string_lossy().to_string();
-    let pass_cmd = format!(
-        "\"{}\" --lock-action \"{}\" \"{}\"",
-        exe_str, "lock", path
-    );
 
-    crate::hidden_cmd("cmd")
-        .args(["/C", "start", "", "\"\"", &pass_cmd])
-        .spawn()
-        .map_err(|e| format!("Cannot launch OmniLock for lock: {}", e))?;
+    // Try to start the app (if already running, the OS will focus the existing window)
+    let _ = crate::hidden_cmd(&exe_str).spawn();
 
-    Ok("Lock action dispatched".to_string())
+    Ok(format!("{} action dispatched for: {}", action, path))
 }
 
-pub fn handle_context_menu_unlock(path: &str) -> Result<String, String> {
-    let p = Path::new(path);
-    if !p.exists() {
-        return Err(format!("Path does not exist: {}", path));
-    }
-
-    logger::log("MENU", &format!("Context menu unlock: {}", path));
-
-    let exe_path = std::env::current_exe()
-        .map_err(|e| format!("Cannot get exe path: {}", e))?;
-    let exe_str = exe_path.to_string_lossy().to_string();
-    let pass_cmd = format!(
-        "\"{}\" --lock-action \"{}\" \"{}\"",
-        exe_str, "unlock", path
-    );
-
-    crate::hidden_cmd("cmd")
-        .args(["/C", "start", "", "\"\"", &pass_cmd])
-        .spawn()
-        .map_err(|e| format!("Cannot launch OmniLock for unlock: {}", e))?;
-
-    Ok("Unlock action dispatched".to_string())
-}
+// Legacy functions removed in v0.0.39 — the old handlers caused an infinite loop.

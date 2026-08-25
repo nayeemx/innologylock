@@ -55,6 +55,9 @@ pub fn get_active_file_key() -> Option<Vec<u8>> {
 /// Path of a .omnilock file passed on the command line, waiting for the user to log in.
 pub static PENDING_OPEN_LOCKED: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 
+/// After widget unlock of an app, the exe path to auto-launch before re-locking.
+pub static AUTO_RELAUNCH_APP: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+
 /// Create a process Command with CREATE_NO_WINDOW to prevent visible console flashes.
 #[cfg(target_os = "windows")]
 pub fn hidden_cmd(program: &str) -> std::process::Command {
@@ -838,6 +841,11 @@ fn cmd_list_drives() -> Vec<String> {
 }
 
 #[tauri::command]
+fn cmd_get_user_profile() -> Result<String, String> {
+    std::env::var("USERPROFILE").map_err(|e| format!("USERPROFILE not set: {}", e))
+}
+
+#[tauri::command]
 fn cmd_vault_store_file(
     state: State<'_, AppState>,
     path: String,
@@ -911,6 +919,136 @@ fn cmd_set_auto_lock(
     vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
     auto_lock::set_auto_lock_minutes(minutes);
     Ok(())
+}
+
+#[tauri::command]
+fn cmd_set_lock_on_screen_lock(
+    state: State<'_, AppState>,
+    enabled: bool,
+) -> Result<(), String> {
+    require_valid_session(&state)?;
+    let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
+    let config = config_guard.as_mut().ok_or("Session not unlocked")?;
+    config.lock_on_screen_lock = enabled;
+    let password_guard = state.password.lock().map_err(|e| e.to_string())?;
+    let password = password_guard.as_ref().ok_or("No password in session")?;
+    vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
+    auto_lock::set_lock_on_screen_lock(enabled);
+    Ok(())
+}
+
+/// Scan for all .omnilock blobs on disk (for the Hidden Items page).
+#[tauri::command]
+fn cmd_list_hidden_blobs() -> Result<Vec<String>, String> {
+    let vault_dir = crate::vault::vault_dir();
+    let storage_dir = vault_dir.join("storage");
+    // Also scan common user directories for .omnilock files
+    let mut blobs = Vec::new();
+    let home = std::env::var("USERPROFILE").unwrap_or_default();
+    let scan_dirs = vec![
+        format!("{}\\Desktop", home),
+        format!("{}\\Documents", home),
+        format!("{}\\Downloads", home),
+        format!("{}\\Pictures", home),
+        format!("{}\\Music", home),
+        format!("{}\\Videos", home),
+    ];
+    for dir in scan_dirs {
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().map_or(false, |e| e == "omnilock") {
+                    if let Some(s) = path.to_str() {
+                        blobs.push(s.to_string());
+                    }
+                }
+            }
+        }
+    }
+    // Also check the vault storage dir
+    if storage_dir.exists() {
+        if let Ok(entries) = std::fs::read_dir(&storage_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().map_or(false, |e| e == "vaultfile") {
+                    if let Some(s) = path.to_str() {
+                        blobs.push(s.to_string());
+                    }
+                }
+            }
+        }
+    }
+    Ok(blobs)
+}
+
+/// Lock a file or folder from the context menu (called from frontend after context-action event).
+#[tauri::command]
+fn cmd_context_menu_lock(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<String, String> {
+    require_valid_session(&state)?;
+    let key = require_file_key(&state)?;
+    let p = std::path::Path::new(&path);
+    if p.is_dir() {
+        let n = file_locker::lock_folder(&path, &key).map_err(|e| e.to_string())?;
+        let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
+        let config = config_guard.as_mut().ok_or("Session not unlocked")?;
+        if !config.locked_folders.contains(&path) {
+            config.locked_folders.push(path.clone());
+        }
+        let password_guard = state.password.lock().map_err(|e| e.to_string())?;
+        let password = password_guard.as_ref().ok_or("No password in session")?;
+        vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
+        process_guard::update_locked_folders(config.locked_folders.clone());
+        save_locked_items_summary(config);
+        Ok(format!("locked {} files in {}", n, path))
+    } else {
+        let enc = file_locker::lock_file(&path, &key).map_err(|e| e.to_string())?;
+        let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
+        let config = config_guard.as_mut().ok_or("Session not unlocked")?;
+        if !config.locked_files.contains(&path) {
+            config.locked_files.push(path.clone());
+        }
+        let password_guard = state.password.lock().map_err(|e| e.to_string())?;
+        let password = password_guard.as_ref().ok_or("No password in session")?;
+        vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
+        save_locked_items_summary(config);
+        Ok(format!("locked {} -> {}", path, enc))
+    }
+}
+
+/// Unlock a file or folder from the context menu.
+#[tauri::command]
+fn cmd_context_menu_unlock(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<String, String> {
+    require_valid_session(&state)?;
+    let key = require_file_key(&state)?;
+    let p = std::path::Path::new(&path);
+    if p.is_dir() {
+        file_locker::unlock_folder(&path, &key).map_err(|e| e.to_string())?;
+        let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
+        let config = config_guard.as_mut().ok_or("Session not unlocked")?;
+        config.locked_folders.retain(|f| f != &path);
+        let password_guard = state.password.lock().map_err(|e| e.to_string())?;
+        let password = password_guard.as_ref().ok_or("No password in session")?;
+        vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
+        process_guard::update_locked_folders(config.locked_folders.clone());
+        save_locked_items_summary(config);
+        Ok(format!("unlocked folder: {}", path))
+    } else {
+        file_locker::unlock_file(&path, &key).map_err(|e| e.to_string())?;
+        let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
+        let config = config_guard.as_mut().ok_or("Session not unlocked")?;
+        config.locked_files.retain(|f| f != &path);
+        let password_guard = state.password.lock().map_err(|e| e.to_string())?;
+        let password = password_guard.as_ref().ok_or("No password in session")?;
+        vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
+        save_locked_items_summary(config);
+        Ok(format!("unlocked file: {}", path))
+    }
 }
 
 #[tauri::command]
@@ -1083,6 +1221,11 @@ fn cmd_widget_unlock(
         "app" => {
             file_locker::unlock_file(&target.target_id, &file_key)?;
             service_client::notify_unlock_item(&target.target_id, &password);
+            // Store for auto-relaunch after widget closes
+            {
+                let mut relaunch = AUTO_RELAUNCH_APP.get_or_init(|| Mutex::new(None)).lock().map_err(|e| e.to_string())?;
+                *relaunch = Some(target.target_id.clone());
+            }
         }
         "drive" => {
             let remaining: Vec<String> = config.locked_drives.iter()
@@ -1105,6 +1248,97 @@ fn cmd_widget_unlock(
     }
 
     // Also store the active file key so the relock handler can use it
+    set_active_file_key(file_key.clone());
+    {
+        let mut fk = state.file_key.lock().map_err(|e| e.to_string())?;
+        *fk = Some(file_key);
+    }
+
+    let mut session_guard = state.session_token.lock().map_err(|e| e.to_string())?;
+    let now = std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_secs();
+    *session_guard = Some(SessionToken { token: password.clone(), expires_at: now + 3600 });
+    drop(session_guard);
+
+    let mut password_guard = state.password.lock().map_err(|e| e.to_string())?;
+    *password_guard = Some(password);
+
+    let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
+    *config_guard = Some(config);
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn cmd_widget_unlock_biometric(
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    // Verify biometric first
+    let verified = biometric::authenticate_biometric("Unlock item with fingerprint".to_string())
+        .await
+        .map_err(|e| format!("Biometric error: {e}"))?;
+    if !verified {
+        return Err("Fingerprint not verified".to_string());
+    }
+
+    // Load the saved password from biometric token
+    let password = biometric::load_biometric_token()
+        .map_err(|_| "No biometric token saved. Enable biometric login first.")?;
+
+    // Now do the same unlock flow as cmd_widget_unlock
+    vault::decrypt_vault(&password).map_err(|_| "Incorrect password")?;
+
+    let target = {
+        let target_guard = UNLOCK_TARGET.get_or_init(|| Mutex::new(None));
+        target_guard.lock().map_err(|e| e.to_string())?.clone()
+            .ok_or("No unlock target")?
+    };
+
+    let mut config = vault::decrypt_vault(&password)?;
+    if config.file_encryption_key.len() != 32 {
+        let mut k = vec![0u8; 32];
+        getrandom::getrandom(&mut k).map_err(|e| format!("Key gen: {e}"))?;
+        config.file_encryption_key = k;
+        vault::encrypt_vault(&config, &password)?;
+    }
+    let file_key = config.file_encryption_key.clone();
+
+    match target.target_type.as_str() {
+        "file" => {
+            file_locker::unlock_file(&target.target_id, &file_key)?;
+            service_client::notify_unlock_item(&target.target_id, &password);
+        }
+        "folder" => {
+            file_locker::unlock_folder(&target.target_id, &file_key)?;
+            service_client::notify_unlock_item(&target.target_id, &password);
+            process_guard::notify_folder_unlocked(&target.target_id);
+        }
+        "app" => {
+            file_locker::unlock_file(&target.target_id, &file_key)?;
+            service_client::notify_unlock_item(&target.target_id, &password);
+            {
+                let mut relaunch = AUTO_RELAUNCH_APP.get_or_init(|| Mutex::new(None)).lock().map_err(|e| e.to_string())?;
+                *relaunch = Some(target.target_id.clone());
+            }
+        }
+        "drive" => {
+            let remaining: Vec<String> = config.locked_drives.iter()
+                .filter(|d| d.as_str() != target.target_id.as_str())
+                .cloned().collect();
+            drive_locker::unlock_drive(&target.target_id, &remaining)?;
+            service_client::notify_unlock_item(&format!("{}:\\", target.target_id), &password);
+        }
+        _ => return Err(format!("Unknown target type: {}", target.target_type)),
+    }
+
+    {
+        let mut pending = WIDGET_TEMP_UNLOCKED.get_or_init(|| Mutex::new(None)).lock().map_err(|e| e.to_string())?;
+        *pending = Some(target.clone());
+    }
+    {
+        let mut g = UNLOCK_TARGET.get_or_init(|| Mutex::new(None)).lock().map_err(|e| e.to_string())?;
+        *g = None;
+    }
+
     set_active_file_key(file_key.clone());
     {
         let mut fk = state.file_key.lock().map_err(|e| e.to_string())?;
@@ -1676,6 +1910,7 @@ pub fn run() {
             cmd_enable_2fa,
             cmd_disable_2fa,
             cmd_list_drives,
+            cmd_get_user_profile,
             cmd_vault_store_file,
             cmd_vault_list_files,
             cmd_vault_extract_file,
@@ -1683,6 +1918,10 @@ pub fn run() {
             cmd_list_processes,
             cmd_list_installed_apps,
             cmd_set_auto_lock,
+            cmd_set_lock_on_screen_lock,
+            cmd_list_hidden_blobs,
+            cmd_context_menu_lock,
+            cmd_context_menu_unlock,
             cmd_get_security_question,
             cmd_get_recovery_key,
             cmd_recover_with_key,
@@ -1697,6 +1936,7 @@ pub fn run() {
             cmd_show_widget,
             cmd_hide_widget,
             cmd_widget_unlock,
+            cmd_widget_unlock_biometric,
             cmd_widget_list_locked,
             cmd_get_service_status,
             cmd_github_start_device_flow,
@@ -1873,6 +2113,61 @@ pub fn run() {
                 }
             }
 
+            // Check for pending context menu action (right-click lock/unlock from Explorer)
+            let vault_dir = crate::vault::vault_dir();
+            let action_file = vault_dir.join("context_action.txt");
+            if action_file.exists() {
+                if let Ok(content) = std::fs::read_to_string(&action_file) {
+                    let _ = std::fs::remove_file(&action_file);
+                    let lines: Vec<&str> = content.lines().collect();
+                    if lines.len() >= 2 {
+                        let action = lines[0].trim();
+                        let path = lines[1].trim().to_string();
+                        logger::log("SETUP", &format!("context action from file: {} {}", action, path));
+                        if action == "unlock" {
+                            if let Ok(mut g) = PENDING_OPEN_LOCKED.get_or_init(|| Mutex::new(None)).lock() {
+                                *g = Some(path);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Start a background thread that polls for context menu actions every 2 seconds.
+            // This handles the case where OmniLock is already running when the user
+            // right-clicks in Explorer → "Lock/Unlock with OmniLock".
+            {
+                let app_handle_for_poll = app.handle().clone();
+                std::thread::spawn(move || {
+                    loop {
+                        std::thread::sleep(std::time::Duration::from_secs(2));
+                        let vault_dir = crate::vault::vault_dir();
+                        let action_file = vault_dir.join("context_action.txt");
+                        if !action_file.exists() {
+                            continue;
+                        }
+                        let content = match std::fs::read_to_string(&action_file) {
+                            Ok(c) => c,
+                            Err(_) => continue,
+                        };
+                        let _ = std::fs::remove_file(&action_file);
+                        let lines: Vec<&str> = content.lines().collect();
+                        if lines.len() < 2 {
+                            continue;
+                        }
+                        let action = lines[0].trim();
+                        let path = lines[1].trim().to_string();
+                        logger::log("POLL", &format!("context action: {} {}", action, path));
+
+                        // Emit event to the frontend so it can handle the action
+                        let _ = app_handle_for_poll.emit("context-action", serde_json::json!({
+                            "action": action,
+                            "path": path,
+                        }));
+                    }
+                });
+            }
+
             logger::log("SETUP", "setup hook complete");
             Ok(())
         })
@@ -1886,6 +2181,19 @@ pub fn run() {
                 }
                 "widget" => {
                     if let tauri::WindowEvent::Focused(false) = event {
+                        // Auto-launch app if one was just unlocked
+                        let relaunch_path = AUTO_RELAUNCH_APP
+                            .get_or_init(|| Mutex::new(None))
+                            .lock().ok()
+                            .and_then(|mut g| g.take());
+
+                        if let Some(exe_path) = relaunch_path {
+                            logger::log("WIDGET", &format!("auto-relaunch: {exe_path}"));
+                            std::thread::spawn(move || {
+                                let _ = std::process::Command::new(&exe_path).spawn();
+                            });
+                        }
+
                         // Re-apply the lock on whatever was temporarily unlocked
                         let pending = WIDGET_TEMP_UNLOCKED
                             .get_or_init(|| Mutex::new(None))

@@ -1,10 +1,10 @@
 import {
   LayoutGrid, SlidersHorizontal, FolderLock, KeyRound,
   Monitor, Settings2, Database, Terminal, RefreshCw,
-  LayoutDashboard, Activity, Bug, Clock,
+  LayoutDashboard, Activity, Bug, Clock, EyeOff,
 } from "lucide-react";
 
-export type TabId = "dashboard" | "monitor" | "apps" | "presets" | "vault" | "security" | "diagnostics" | "history";
+export type TabId = "dashboard" | "monitor" | "apps" | "presets" | "vault" | "security" | "diagnostics" | "history" | "hidden";
 export type SetupStep = 1 | 2;
 
 export const tabs: { id: TabId; label: string; icon: React.ElementType }[] = [
@@ -13,6 +13,7 @@ export const tabs: { id: TabId; label: string; icon: React.ElementType }[] = [
   { id: "apps", label: "Application Locker", icon: LayoutGrid },
   { id: "presets", label: "System Presets", icon: SlidersHorizontal },
   { id: "vault", label: "File & Drive Vault", icon: FolderLock },
+  { id: "hidden", label: "Hidden Items", icon: EyeOff },
   { id: "security", label: "Security & 2FA", icon: KeyRound },
   { id: "history", label: "History", icon: Clock },
   { id: "diagnostics", label: "Diagnostics", icon: Bug },

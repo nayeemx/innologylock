@@ -38,7 +38,7 @@
 ### File/Folder Locking (v0.0.35 — AES-256-GCM encryption, replaced ACL)
 - **Method:** Authenticated encryption in place (AES-256-GCM, `aes-gcm` crate). No NTFS ACL modification.
 - **Key:** `VaultConfig.file_encryption_key` — 32 random bytes inside the encrypted vault, never rotated on password change.
-- **Lock:** `original` → `original.omnilock` (`OLCK` magic + version + 96-bit nonce + original path + ciphertext + 16-byte tag), original deleted.
+- **Lock:** `original` → `original.omnilock` (`OLCK` magic + version + 96-bit nonce + original path + ciphertext + 16-byte tag), original deleted. Blob is hidden (`FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM`) so it's invisible in Explorer by default.
 - **Folder:** recursive encrypt; the folder stays browsable.
 - **Unlock:** decrypt via the embedded original path; blob deleted.
 - **Security property:** contents are unreadable without the vault key. If the vault is lost, locked files are unrecoverable — keep a vault backup.

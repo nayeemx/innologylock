@@ -3,7 +3,7 @@ import {
   ShieldCheck, ShieldAlert, Cpu, Activity,
   Search, Plus, RefreshCw, X, Loader2, CheckCircle2,
 } from "lucide-react";
-import { listProcesses, listInstalledApps, addLockedApp, toggleLockedApp, removeLockedApp, showWidget, type VaultConfigDto } from "../../lib/tauri-bridge";
+import { listProcesses, listInstalledApps, addLockedApp, toggleLockedApp, removeLockedApp, addLockedFolder, getUserProfile, showWidget, type VaultConfigDto } from "../../lib/tauri-bridge";
 import { SectionHeader } from "../shared/SectionHeader";
 import { Stat } from "../shared/Stat";
 import { StatusPill } from "../shared/StatusPill";
@@ -105,6 +105,37 @@ export function AppLockerPage({ config, refresh }: { config: VaultConfigDto | nu
     setRemovingApp(null);
   };
 
+  const handleLockAppData = async (appPath: string, appName: string) => {
+    clearMessages();
+    try {
+      const exeName = appPath.split("\\").pop()?.replace(/\.exe$/i, "") || appName;
+      const home = await getUserProfile();
+      if (!home) {
+        setError("Cannot determine user profile directory.");
+        return;
+      }
+      const dataDirs = [
+        `${home}\\AppData\\Local\\${exeName}`,
+        `${home}\\AppData\\Roaming\\${exeName}`,
+      ];
+      let locked = 0;
+      for (const dir of dataDirs) {
+        try {
+          await addLockedFolder(dir);
+          locked++;
+        } catch { /* skip dirs that don't exist */ }
+      }
+      if (locked > 0) {
+        setSuccess(`Locked ${locked} data folder(s) for "${appName}".`);
+        await refresh();
+      } else {
+        setSuccess(`No data folders found for "${appName}" in AppData.`);
+      }
+    } catch (e: any) {
+      setError("Failed to lock app data: " + e);
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <SectionHeader
@@ -174,6 +205,11 @@ export function AppLockerPage({ config, refresh }: { config: VaultConfigDto | nu
               <button onClick={() => showWidget("app", app.path, app.name)}
                       className="px-3 py-1.5 rounded-lg text-xs border border-[color:var(--success)]/30 text-[color:var(--success)] hover:bg-[color:var(--success)]/10">
                 Unlock
+              </button>
+              <button onClick={() => handleLockAppData(app.path, app.name)}
+                      className="px-3 py-1.5 rounded-lg text-xs border border-[color:var(--violet)]/30 text-[color:var(--violet)] hover:bg-[color:var(--violet)]/10"
+                      title="Lock app data folders (AppData\Local, AppData\Roaming)">
+                Lock Data
               </button>
             </div>
           ))}

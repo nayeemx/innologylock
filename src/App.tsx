@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
 import { Github, ArrowRight, Loader2, ShieldAlert } from "lucide-react";
+import { listen } from "@tauri-apps/api/event";
 import {
   getVaultStatus, getVaultConfig, lockNow,
   githubGetStatus, githubStartDeviceFlow, githubPollToken, openExternalUrl,
   hasBiometricToken,
   verifyLockedState, relockEntries, forgetUnlockedEntries,
+  contextMenuLock, contextMenuUnlock,
   type VaultStatusDto, type VaultConfigDto, type GitHubSyncStatusDto, type UnlockTarget,
 } from "./lib/tauri-bridge";
 import { SetupWizard } from "./components/auth/SetupWizard";
@@ -20,6 +22,7 @@ import { SystemMonitorPage } from "./components/pages/SystemMonitorPage";
 import { DashboardPage } from "./components/pages/DashboardPage";
 import { DiagnosticsPage } from "./components/pages/DiagnosticsPage";
 import { HistoryPage } from "./components/pages/HistoryPage";
+import { HiddenItemsPage } from "./components/pages/HiddenItemsPage";
 import { UnlockWidget } from "./components/widget/UnlockWidget";
 import { type TabId } from "./components/types";
 
@@ -42,14 +45,7 @@ export default function App() {
   const [hasBiometric, setHasBiometric] = useState(false);
   const [staleIssues, setStaleIssues] = useState<UnlockTarget[] | null>(null);
   const [resolvingStale, setResolvingStale] = useState(false);
-
-  useEffect(() => {
-    if (!widgetMode) {
-      getVaultStatus().then(setVaultStatus).catch(console.error);
-      githubGetStatus().then(setGithubStatus).catch(console.error);
-      hasBiometricToken().then(setHasBiometric).catch(console.error);
-    }
-  }, [widgetMode]);
+  const [toast, setToast] = useState<{ message: string; type: "info" | "success" | "warning" } | null>(null);
 
   const refreshConfig = useCallback(async () => {
     try {
@@ -59,6 +55,40 @@ export default function App() {
       console.error("Failed to fetch config:", e);
     }
   }, []);
+
+  useEffect(() => {
+    if (!widgetMode) {
+      getVaultStatus().then(setVaultStatus).catch(console.error);
+      githubGetStatus().then(setGithubStatus).catch(console.error);
+      hasBiometricToken().then(setHasBiometric).catch(console.error);
+
+      // Listen for context menu actions from the backend (right-click lock/unlock)
+      const unlistenContext = listen<{ action: string; path: string }>("context-action", async (event) => {
+        const { action, path } = event.payload;
+        if (!isUnlocked) return;
+        try {
+          if (action === "lock") {
+            await contextMenuLock(path);
+            await refreshConfig();
+          } else if (action === "unlock") {
+            await contextMenuUnlock(path);
+            await refreshConfig();
+          }
+        } catch (e) {
+          console.error("Context action failed:", e);
+        }
+      });
+
+      // Listen for app-blocked events (locked app was killed by process monitor)
+      const unlistenBlocked = listen<{ target_type: string; target_id: string; display_name: string }>("app-blocked", (event) => {
+        const { display_name } = event.payload;
+        setToast({ message: `Blocked: ${display_name} was terminated (app is locked)`, type: "warning" });
+        setTimeout(() => setToast(null), 4000);
+      });
+
+      return () => { unlistenContext.then(fn => fn()); unlistenBlocked.then(fn => fn()); };
+    }
+  }, [widgetMode, isUnlocked, refreshConfig]);
 
   const handleUnlock = useCallback(async () => {
     try {
@@ -310,6 +340,16 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex text-[color:var(--foreground)]">
+      {/* Toast notification */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg text-sm shadow-lg animate-in slide-in-from-top-2 ${
+          toast.type === "warning" ? "bg-[color:var(--warning)]/15 border border-[color:var(--warning)]/30 text-[color:var(--warning)]" :
+          toast.type === "success" ? "bg-[color:var(--success)]/15 border border-[color:var(--success)]/30 text-[color:var(--success)]" :
+          "bg-[color:var(--primary)]/15 border border-[color:var(--primary)]/30 text-[color:var(--primary)]"
+        }`}>
+          {toast.message}
+        </div>
+      )}
       <Sidebar tab={activeTab} setTab={setActiveTab} config={vaultConfig} onLogout={handleLockNow} />
       <div className="flex-1 flex flex-col min-w-0">
         <TopBar onLockNow={handleLockNow} totpEnabled={vaultConfig?.totp_enabled} />
@@ -319,6 +359,7 @@ export default function App() {
           {activeTab === "apps" && <AppLockerPage config={vaultConfig} refresh={refreshConfig} />}
           {activeTab === "presets" && <PresetsPage config={vaultConfig} refresh={refreshConfig} />}
           {activeTab === "vault" && <VaultPage config={vaultConfig} refresh={refreshConfig} />}
+          {activeTab === "hidden" && <HiddenItemsPage />}
           {activeTab === "security" && <SecurityPage config={vaultConfig} refresh={refreshConfig} />}
           {activeTab === "history" && <HistoryPage />}
           {activeTab === "diagnostics" && <DiagnosticsPage />}

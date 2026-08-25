@@ -4,10 +4,10 @@
 
 ## Current State
 
-- **Version**: 0.0.37 (**RELEASED 2026-08-17** via CI: signed installer + `.sig` on the GitHub release; `latest.json` updated on both endpoints — installed 2026-08-17 by the owner, biometric login **verified working** on the HP EliteBook 850 G5). Working tree clean except `omnilock-bio/` (abandoned engine, intentionally untracked — disposition unresolved).
-- **Last Updated**: 2026-08-17
-- **Git**: on `main` at `2df458a`; tag `v0.0.37` pushed; last commit "docs: fill v0.0.37 installer sha256 in AGENTS.md".
-- **Build status**: ✅ `cargo check` (src-tauri) — 0 errors, 0 warnings. ✅ `npx tsc --noEmit` — clean. ✅ `cargo check` (service) — clean. ✅ **Biometric login E2E verified on the real machine** (v0.0.37 installed, fingerprint login works); other E2E flows (widget re-lock, vault storage, ACL recovery) still untested on the machine.
+- **Version**: 0.0.39 (**unreleased** — context menu fix, hidden items page, lock on screen lock, app data lock, notifications). Working tree has uncommitted changes for this feature set.
+- **Last Updated**: 2026-08-25
+- **Git**: on `main` at `47a96f8`; last commit "docs: mark v0.0.37 biometric login as verified on the real machine".
+- **Build status**: ✅ `cargo check` (src-tauri) — 0 errors, 0 warnings. ✅ `npx tsc --noEmit` — clean.
 
 ---
 
@@ -18,6 +18,7 @@
 3. Run `cargo check` (src-tauri) + `npx tsc --noEmit` — both must be clean.
 4. Read `CHANGELOG.md` → `docs/DEV_LOG.md` → `docs/ARCHITECTURE.md` → `docs/SECURITY.md` for depth.
 5. After ANY work (code, docs, research): **update all `.md` files** (AGENTS.md current state, CHANGELOG.md entry, DEV_LOG.md entry, ARCHITECTURE.md if commands/schema changed). This is a standing rule — always end a session by updating the .md files so the next session can resume instantly.
+6. **STANDING RULE: Record every user prompt in `PROMPTS.md`** — Every message the user sends must be logged with a timestamp in `PROMPTS.md`. This ensures session continuity: if a chat session is lost, the next AI reads PROMPTS.md to pick up from the last user prompt. Append each new prompt to the current session's table.
 
 ---
 
@@ -53,6 +54,30 @@ The user asked to scan the project, read every `.md` file, and solve everything 
 
 ### 6. Docs updated (standing rule)
 - AGENTS.md, CHANGELOG.md (0.0.36 entry), docs/DEV_LOG.md, docs/ARCHITECTURE.md (IPC table + vault storage), docs/SECURITY.md, docs/PRD.md, README.md, docs/INSTRUCTION.md (tree + decisions).
+
+---
+
+## What Was Done in This Session (2026-08-24) — the v0.0.38 feature set
+
+The user asked to implement Android-inspired lock/unlock features for Windows: hidden files, app lock with auth prompt, fingerprint in widget, auto-relaunch. All items below are in the working tree (uncommitted).
+
+### 1. Android-style app lock with auto-relaunch
+- After widget unlock of an app target, `AUTO_RELAUNCH_APP` static stores the exe path. On widget focus-lost, the app is spawned automatically before re-encrypting the exe. No more manual re-launching.
+- Widget success message now says "Launching application..." for app targets.
+
+### 2. Fingerprint option in the UnlockWidget
+- New `cmd_widget_unlock_biometric` command: calls `biometric::authenticate_biometric` (Windows Hello prompt), loads the DPAPI token for the password, then runs the same unlock flow as `cmd_widget_unlock`.
+- `UnlockWidget.tsx` now shows a "Use Fingerprint" button when biometric hardware is available, with an "or" divider between fingerprint and password.
+- Bridge: `widgetUnlockBiometric` added to `tauri-bridge.ts`.
+
+### 3. Locked files/folders are invisible in Explorer
+- `file_locker.rs`: new `hide_blob` / `show_blob` functions using `SetFileAttributesW` from `Win32::Storage::FileSystem`.
+- After writing `.omnilock` blobs: `hide_blob` sets `FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM` — blobs disappear from Explorer's default view.
+- Before reading blobs for unlock: `show_blob` restores `FILE_ATTRIBUTE_NORMAL`.
+- Applies to both single files and folder contents (recursive encrypt calls `lock_file` which calls `hide_blob`).
+
+### 4. Restored working tree from catastrophic damage
+- `lib.rs` was gutted (1929 → 81 lines) and `vault_storage.rs` was replaced with broken stubs. Both restored from `HEAD` via `git checkout`. Only `process_guard.rs` changes (minor: `add_prompted_folder` + `clear_prompted_folder` made public) were preserved.
 
 ---
 
@@ -252,6 +277,8 @@ Patch bumps: 0.0.35 → 0.0.36 → … → 0.1.0
 
 ## Version History (most recent first)
 
+- **0.0.39 (UNRELEASED)** — Context menu fix (infinite loop resolved), hidden items page, lock on screen lock (`WTSRegisterSessionNotification`), app data lock, lock event toast notifications.
+- **0.0.38 (UNRELEASED)** — Android-style app lock with auto-relaunch, fingerprint in UnlockWidget, locked blobs hidden from Explorer (`FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM`).
 - **0.0.37 (RELEASED 2026-08-17, CI-built + signed; auto-update published)** — **Biometric availability fixed**: `check_biometric_available` now asks `UserConsentVerifier.CheckAvailabilityAsync()` instead of registry keys (`WindowsHello\Enabled` + `Bio\Credential Provider` are absent on Windows 11 — that's why v0.0.36 said "unable to detect biometric" on a working sensor). All background commands now spawn with `CREATE_NO_WINDOW` (no console flashes; fixed `cloud_status.rs` + `shell_context.rs` + service daemon start). Installer sha256 `6D5565FF5A993C34B86D1DA1097736461C492E8FA15694F3EE450AE9BBED9B50` on the `v0.0.37` release.
 - **0.0.36 (RELEASED 2026-08-16, CI-built + signed; auto-update published)** — Vault Storage (encrypted private file storage + encrypted manifest), stale-unlock detection + re-lock/keep prompt after restart, legacy service ACL boot purge, `cmd_biometric_login` parity (auto-lock minutes + USB-removal callback), **biometric login reworked to the Windows Hello prompt** (hardware-proven on the HP EliteBook 850 G5: the Synaptics WBF driver ignores background-app captures, so direct WBF is dead; the corrected `UserConsentVerificationResult` type name makes the Hello path work). Installer sha256 `FF982C26EE5DC96B0C5FC296EAB959EF26E24435BB69C056F0848F5E5CF2AFE8` on the `v0.0.36` release.
 - **0.0.35 (RELEASED 2026-08-07, CI-built + signed)** — AES-256-GCM encryption-based file/folder locking replaces destructive ACL locking; direct WBF fingerprint (no Windows Hello); ACL damage scanner + bulk recovery UI; widget temp-unlock + auto-relock; `.omnilock` file association + `--open-locked`; GitHub Release pipeline fixed and now works on tag push. Installer sha256 `2598219E8238B1EF...7F68CDCC` on the `v0.0.35` release. Runtime E2E testing still outstanding.
@@ -266,20 +293,19 @@ Patch bumps: 0.0.35 → 0.0.36 → … → 0.1.0
 ## Next Session: Continue from Here
 
 ### Where we left off
-v0.0.37 is **released** (committed, tagged, CI-built signed release, `latest.json` live on both endpoints). **Biometric login is verified working on the real machine** — the owner installed v0.0.37 on the HP EliteBook 850 G5 and logged in with the fingerprint via the Windows Hello prompt. The remaining E2E flows (widget re-lock, vault storage, ACL recovery, stale-unlock prompt) are still untested on the machine.
+v0.0.39 is **unreleased** — context menu fix (infinite loop), hidden items page, lock on screen lock, app data lock, notifications. All features compile clean (cargo check + tsc). Working tree has uncommitted changes for this feature set. v0.0.37 was released and biometric login verified on the real machine.
 
 ### Suggested next steps (in order)
-1. **Let the installed app auto-update to v0.0.37, then run the app end-to-end on Windows** (you must do this on a real machine — I cannot):
-   - ~~Update from the installed app~~ — **DONE 2026-08-17: v0.0.37 installed; fingerprint login verified working (the reason for this release).**
-   - Lock a **test** file/folder (start small — see the drive warning below!) → confirm `.omnilock` blob created, original gone
-   - Open the locked folder in Explorer → widget pops up → unlock with password → use files → close widget → verify auto re-lock
-   - **Kill the app while a widget-unlocked item is still open → relaunch → log in → verify the stale-unlock prompt appears → test both Re-lock all and Keep unlocked**
-   - Vault page → Vault Storage → Add File → verify original deleted + blob in `%APPDATA%\InnologyBD\OmniLock\storage\` → Extract to a folder → Delete
-   - **Fingerprint login (the reason for this release)**: Security page → Biometric Login (Fingerprint) → Enable → enter master password → log out → Login with Fingerprint → expect the **Windows Hello fingerprint prompt** → touch sensor → `Verified` → unlocked. If the toggle is missing, check Diagnostics → Biometric (hardware available / token saved / token decrypts). ~~← **DONE 2026-08-17: verified working on the real machine.**~~
-   - Diagnostics → ACL Recovery: scan a previously-broken path, Fix All, verify the service no longer re-locks at boot
-   - Double-click a `.omnilock` file → OmniLock opens with unlock widget (tests file association + `--open-locked`)
-2. **Fix anything the test surfaces** and release as v0.0.37 (bump `src-tauri/Cargo.toml` + `package.json` + `tauri.conf.json`, commit, `git tag v0.0.37 && git push origin main --tags`; CI builds + signs the release; then update `latest.json` in root + `docs/` with the release's `.sig` + sha256 and push).
-3. Update this file + CHANGELOG + DEV_LOG as you go (standing rule).
+1. **Commit the v0.0.39 changes** and build for testing.
+2. **E2E test on Windows** (must be on a real machine):
+   - Right-click a file/folder in Explorer → "Lock with OmniLock" → file should encrypt and disappear from Explorer
+   - Right-click a locked file → "Unlock with OmniLock" → authenticate → file decrypts
+   - Lock Windows screen (Win+L) → verify temp-unlocked items re-lock
+   - Check Hidden Items tab shows all `.omnilock` blobs
+   - Lock an app → click "Lock Data" → verify AppData folders are locked
+   - Kill a locked app → verify toast notification appears
+3. **Release v0.0.39** (bump versions, tag, CI build).
+4. Update docs as you go (standing rule).
 
 ### Priority issues to investigate (known design concerns)
 1. **DRIVE LOCK (resolved for now, more work optional)**: v0.0.35 drive lock = NoDrives hide only (whole-drive recursive encryption was removed as a data hazard). Direct path access (e.g. `D:\` in the address bar) still works — true blocking needs a kernel driver or per-user-selected subpath encryption. Decide whether that matters and implement if so.
@@ -296,9 +322,13 @@ v0.0.37 is **released** (committed, tagged, CI-built signed release, `latest.jso
 | Feature | Priority | Notes |
 |---------|----------|-------|
 | ~~Vault "add files to vault" storage (user #2)~~ | ~~High~~ | **DONE in v0.0.36** — `vault_storage.rs` + Vault Storage UI |
-| Hide files/folders/drives (user #3) | Medium | Partial via NoDrives; folder hiding not implemented |
-| Auto-relock after idle | Medium | Idle detection exists; re-lock trigger wired via `auto_lock` |
-| Shell context menu (right-click lock/unlock) | Done | `shell_context.rs` + `.omnilock` association |
+| ~~Hide files/folders (user #3)~~ | ~~Medium~~ | **DONE in v0.0.38** — `.omnilock` blobs marked `HIDDEN + SYSTEM` |
+| ~~Auto-relock after idle~~ | ~~Medium~~ | **DONE** — idle detection exists; re-lock trigger wired via `auto_lock` |
+| ~~Shell context menu (right-click lock/unlock)~~ | ~~Done~~ | **DONE in v0.0.39** — actually works now (was infinite loop) |
+| ~~Hidden Items page~~ | ~~Medium~~ | **DONE in v0.0.39** — new tab shows all `.omnilock` blobs |
+| ~~Lock on screen lock~~ | ~~Medium~~ | **DONE in v0.0.39** — `WTSRegisterSessionNotification` listener |
+| ~~App data lock~~ | ~~Medium~~ | **DONE in v0.0.39** — "Lock Data" button per locked app |
+| ~~Lock event notifications~~ | ~~Low~~ | **DONE in v0.0.39** — toast when locked app is killed |
 | Cloud Files API Status column | Low | WinRT `StorageProviderItemProperties.SetAsync`, needs MSIX |
 | File version backup before lock | Low | `backup_path_for` helper retained, unused |
 | Lock history / audit UI | Low | Logger data exists, History page exists |

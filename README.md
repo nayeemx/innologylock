@@ -35,6 +35,7 @@ npx tauri build
 | System preset lockdown (all 6 presets) | ✅ |
 | Installer guard (blocks MSI/setup executables) | ✅ |
 | File & folder locking via AES-256-GCM encryption (`.omnilock`) | ✅ v0.0.35 |
+| Hidden lock blobs (invisible in Explorer) | ✅ v0.0.38 |
 | Vault Storage — encrypted private file storage (add/extract/delete) | ✅ v0.0.36 |
 | Stale-unlock prompt after restart (re-lock all / keep unlocked) | ✅ v0.0.36 |
 | Legacy service ACL state purged at boot | ✅ v0.0.36 |
@@ -43,8 +44,15 @@ npx tauri build
 | ACL Recovery (repair files damaged by the old DACL lock) | ✅ v0.0.35 |
 | Drive locking (NoDrives + encryption; design concern — see AGENTS.md) | ⚠️ |
 | Fingerprint login via direct Windows Biometric Framework (no Windows Hello) | ✅ v0.0.35 |
+| Widget fingerprint unlock (Windows Hello in widget) | ✅ v0.0.38 |
+| Widget auto-relaunch app after unlock | ✅ v0.0.38 |
 | Widget temp-unlock + auto re-lock on close | ✅ v0.0.35 |
 | `.omnilock` double-click → unlock widget | ✅ v0.0.35 |
+| Context menu lock/unlock (right-click in Explorer) | ✅ v0.0.39 |
+| Hidden Items page (view all encrypted blobs) | ✅ v0.0.39 |
+| Lock on screen lock (Win+L re-locks items) | ✅ v0.0.39 |
+| App data lock (lock AppData folders for an app) | ✅ v0.0.39 |
+| Lock event notifications (toast on app kill) | ✅ v0.0.39 |
 | Signed GitHub Releases via tag push (CI) | ✅ v0.0.35 |
 | TOTP 2FA (RFC 6238, base32, QR setup) | ✅ |
 | Panic hotkey (Win+Alt+L) | ✅ |

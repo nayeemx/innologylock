@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { Lock, Shield, X } from "lucide-react";
-import { widgetUnlock, hideWidget } from "../../lib/tauri-bridge";
+import { Lock, Shield, X, Fingerprint } from "lucide-react";
+import { widgetUnlock, widgetUnlockBiometric, hideWidget, checkBiometric } from "../../lib/tauri-bridge";
 
 interface UnlockTarget {
   target_type: string;
@@ -22,6 +22,8 @@ export function UnlockWidget() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricLoading, setBiometricLoading] = useState(false);
 
   useEffect(() => {
     const unlisten = listen<UnlockTarget>("unlock-target", (event) => {
@@ -30,6 +32,8 @@ export function UnlockWidget() {
       setError("");
       setSuccess(false);
     });
+    // Check if biometric is available
+    checkBiometric().then(s => setBiometricAvailable(s.available)).catch(() => {});
     return () => { unlisten.then(fn => fn()); };
   }, []);
 
@@ -60,6 +64,21 @@ export function UnlockWidget() {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") handleSubmit();
     if (e.key === "Escape") handleClose();
+  };
+
+  const handleBiometric = async () => {
+    setBiometricLoading(true);
+    setError("");
+    try {
+      await widgetUnlockBiometric();
+      setSuccess(true);
+      setTimeout(() => {
+        handleClose();
+      }, 1500);
+    } catch (e: any) {
+      setError(String(e));
+    }
+    setBiometricLoading(false);
   };
 
   return (
@@ -107,8 +126,33 @@ export function UnlockWidget() {
                 onKeyDown={handleKeyDown}
                 placeholder="Master password"
                 autoFocus
-                className="w-full px-4 py-3 rounded-lg bg-surface border border-surface-border text-sm outline-none focus:border-[color:var(--primary)]/50 mb-4 placeholder:text-[color:var(--muted-foreground)]"
+                className="w-full px-4 py-3 rounded-lg bg-surface border border-surface-border text-sm outline-none focus:border-[color:var(--primary)]/50 mb-3 placeholder:text-[color:var(--muted-foreground)]"
               />
+
+              {biometricAvailable && (
+                <button
+                  onClick={handleBiometric}
+                  disabled={biometricLoading}
+                  className="w-full px-4 py-2.5 rounded-lg text-sm font-medium mb-4 flex items-center justify-center gap-2 border border-[color:var(--accent)]/30 hover:bg-[color:var(--accent)]/10 transition-colors disabled:opacity-40"
+                  style={{ color: "var(--accent)" }}>
+                  {biometricLoading ? (
+                    "Verifying fingerprint..."
+                  ) : (
+                    <>
+                      <Fingerprint className="w-4 h-4" />
+                      Use Fingerprint
+                    </>
+                  )}
+                </button>
+              )}
+
+              {biometricAvailable && (
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="flex-1 h-px bg-surface-border"></div>
+                  <span className="text-[10px] uppercase tracking-widest text-[color:var(--muted-foreground)]">or</span>
+                  <div className="flex-1 h-px bg-surface-border"></div>
+                </div>
+              )}
 
               <div className="flex gap-2">
                 <button onClick={handleClose}
@@ -130,7 +174,9 @@ export function UnlockWidget() {
                 <Shield className="w-6 h-6 text-[color:var(--success)]" />
               </div>
               <div className="text-sm font-medium text-[color:var(--success)]">Unlocked Successfully</div>
-              <div className="text-xs text-[color:var(--muted-foreground)] mt-1">You can now access this item.</div>
+              <div className="text-xs text-[color:var(--muted-foreground)] mt-1">
+                {target?.target_type === "app" ? "Launching application..." : "You can now access this item."}
+              </div>
             </div>
           ) : (
             <div className="text-center py-6 text-sm text-[color:var(--muted-foreground)]">

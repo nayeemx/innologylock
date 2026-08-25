@@ -54,10 +54,19 @@ pub fn notify_folder_unlocked(path: &str) {
     clear_prompted_folder(path);
 }
 
-fn clear_prompted_folder(path: &str) {
+pub fn clear_prompted_folder(path: &str) {
     if let Ok(mut guard) = PROMPTED_FOLDERS.get_or_init(|| Mutex::new(Vec::new())).lock() {
         let norm = normalize_path(path);
         guard.retain(|p| normalize_path(p) != norm);
+    }
+}
+
+pub fn add_prompted_folder(path: &str) {
+    if let Ok(mut guard) = PROMPTED_FOLDERS.get_or_init(|| Mutex::new(Vec::new())).lock() {
+        let norm = normalize_path(path);
+        if !guard.iter().any(|p| normalize_path(p) == norm) {
+            guard.push(path.to_string());
+        }
     }
 }
 

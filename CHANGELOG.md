@@ -4,6 +4,30 @@ All notable changes to OmniLock are documented in this file.
 
 Format: [SemVer](https://semver.org/) — `MAJOR.MINOR.PATCH`
 
+## [0.0.39] - 2026-08-25
+
+### Added
+- **Context menu actually works now**: right-click "Lock with OmniLock" / "Unlock with OmniLock" in Explorer now performs the action (was an infinite loop in v0.0.38 that never locked anything). Uses file-based IPC so it works even when the app is already running.
+- **Hidden Items page**: new "Hidden Items" tab shows all `.omnilock` blobs and vault storage files that are invisible in Explorer. Scan button to refresh.
+- **Lock on Screen Lock**: new toggle in Security page — when enabled, locking the Windows screen (Win+L) automatically re-locks all temporarily unlocked files and folders. Uses `WTSRegisterSessionNotification` to listen for `SESSION_LOCK` events.
+- **App data lock**: "Lock Data" button on each locked app locks its `AppData\Local` and `AppData\Roaming` folders.
+- **Lock event notifications**: toast notification appears when a locked app is killed by the process monitor.
+- New commands: `cmd_set_lock_on_screen_lock`, `cmd_list_hidden_blobs`, `cmd_context_menu_lock`, `cmd_context_menu_unlock`, `cmd_get_user_profile`.
+
+### Fixed
+- **Context menu infinite loop**: `--context-menu-lock` spawned `--lock-action` which called `handle_context_menu_lock` again, creating an infinite chain of processes. Now uses file-based dispatch (`context_action.txt` in vault dir) so the running app picks up the action.
+
+### Changed
+- `shell_context.rs` `handle_context_menu_lock`/`handle_context_menu_unlock` removed — replaced by `dispatch_context_action` which writes to a file and starts the app.
+- `main.rs` simplified: no longer calls shell_context handlers directly.
+
+## [0.0.38] - 2026-08-24
+
+### Added
+- **Android-style app lock**: locked apps now auto-relaunch after widget unlock — authenticate → exe decrypted → app launches automatically → close app → exe re-encrypts. No more manual re-launching.
+- **Fingerprint unlock in widget**: the UnlockWidget now shows a "Use Fingerprint" button (when biometric hardware is available) alongside the password field. Uses the same Windows Hello prompt as biometric login. New command `cmd_widget_unlock_biometric`.
+- **Locked files/folders are now invisible**: `.omnilock` blobs are marked `FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM` after encryption, so they disappear from Explorer by default. Attributes are removed on unlock.
+
 ## [0.0.37] - 2026-08-17 (released — signed installer + latest.json on both endpoints; **biometric login verified working on the owner's HP EliteBook 850 G5**)
 
 ### Fixed

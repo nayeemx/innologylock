@@ -5,7 +5,7 @@ import {
   Usb, Github, Cloud, Fingerprint,
 } from "lucide-react";
 import {
-  generateTotpSecret, generateTotpQr, enable2FA, disable2FA, setAutoLock,
+  generateTotpSecret, generateTotpQr, enable2FA, disable2FA, setAutoLock, setLockOnScreenLock,
   checkForUpdates, installUpdate, getRecoveryKey,
   listUsbDrives, enrollUsbKey, removeUsbKey, detectUsbKey,
   backupVault, restoreVault, pickDirectory,
@@ -396,6 +396,36 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
           <div className="mt-4 pt-4 border-t border-[color:var(--border)] text-xs text-[color:var(--muted-foreground)]">
             Vault stored at <code>%APPDATA%\InnologyBD\OmniLock\vault.enc</code>
           </div>
+        </div>
+
+        <div className="glass rounded-2xl p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <Activity className="w-5 h-5 text-[color:var(--primary)]" />
+            <h3 className="font-semibold">Lock on Screen Lock</h3>
+            <span className={`ml-auto text-xs px-2 py-1 rounded-full ${config?.lock_on_screen_lock ? "bg-[color:var(--success)]/15 text-[color:var(--success)]" : "bg-surface text-[color:var(--muted-foreground)] border border-surface-border"}`}>
+              {config?.lock_on_screen_lock ? "Enabled" : "Disabled"}
+            </span>
+          </div>
+          <p className="text-xs text-[color:var(--muted-foreground)] mb-4">
+            When you lock your Windows screen (Win+L), OmniLock will automatically re-lock all temporarily unlocked files and folders.
+          </p>
+          <button
+            onClick={async () => {
+              try {
+                await setLockOnScreenLock(!config?.lock_on_screen_lock);
+                await refresh();
+              } catch (e: any) {
+                setError("Failed: " + e);
+              }
+            }}
+            className={`px-4 py-2 rounded-lg text-sm border transition ${
+              config?.lock_on_screen_lock
+                ? "border-[color:var(--primary)]/50 bg-[color:var(--primary)]/10 text-[color:var(--primary)]"
+                : "border-surface-border bg-surface text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]"
+            }`}
+          >
+            {config?.lock_on_screen_lock ? "Disable Lock on Screen Lock" : "Enable Lock on Screen Lock"}
+          </button>
         </div>
       </div>
 

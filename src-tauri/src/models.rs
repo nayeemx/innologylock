@@ -26,6 +26,7 @@ pub struct VaultConfigDto {
     pub cloud_sync_enabled: bool,
     pub github_username: String,
     pub biometric_enabled: bool,
+    pub lock_on_screen_lock: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,6 +86,7 @@ impl From<&VaultConfig> for VaultConfigDto {
             cloud_sync_enabled: config.cloud_sync_enabled,
             github_username: config.github_username.clone(),
             biometric_enabled: config.biometric_enabled,
+            lock_on_screen_lock: config.lock_on_screen_lock,
         }
     }
 }
@@ -144,6 +146,9 @@ pub struct VaultConfig {
     /// Generated once at vault creation, never rotated when password changes.
     #[serde(default)]
     pub file_encryption_key: Vec<u8>,
+    /// When true, re-lock all temp-unlocked items when Windows locks the screen.
+    #[serde(default)]
+    pub lock_on_screen_lock: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -200,6 +205,7 @@ impl Default for VaultConfig {
             cloud_sync_enabled: false,
             biometric_enabled: false,
             file_encryption_key: Vec::new(),
+            lock_on_screen_lock: false,
         }
     }
 }
