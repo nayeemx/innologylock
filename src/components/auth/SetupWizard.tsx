@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import {
   Shield, Eye, EyeOff, ArrowRight,
 } from "lucide-react";
@@ -50,9 +50,9 @@ export function SetupWizard({ onComplete }: { onComplete: () => void }) {
     <div className="min-h-screen flex items-center justify-center p-6" style={{ background: "var(--background)" }}>
       <div className="w-full max-w-lg">
         <div className="flex items-center gap-3 mb-8">
-          <img src="/icon.png" alt="OmniLock" className="w-11 h-11 rounded-xl object-cover glow-cyan" />
+          <img src="/icon.png" alt="InnologyLock" className="w-11 h-11 rounded-xl object-cover glow-cyan" />
           <div>
-            <div className="text-lg font-semibold tracking-tight">OmniLock</div>
+            <div className="text-lg font-semibold tracking-tight">InnologyLock</div>
             <div className="text-[11px] text-[color:var(--muted-foreground)] tracking-wider uppercase">by InnologyBD</div>
           </div>
         </div>
@@ -144,7 +144,7 @@ export function SetupWizard({ onComplete }: { onComplete: () => void }) {
         </div>
 
         <div className="mt-6 text-center text-[11px] text-[color:var(--muted-foreground)]">
-          Protected by Argon2id · AES-256-GCM · TOTP RFC 6238
+          Protected by Argon2id Â· AES-256-GCM Â· TOTP RFC 6238
         </div>
       </div>
     </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+﻿import { useState, useEffect, useRef } from "react";
 import {
   HardDrive, Folder, FileLock2, Lock, Unlock, Loader2, FolderOpen, FileSearch, Search, ShieldAlert,
   Download, Upload, FileJson, Archive, Trash2,
@@ -136,7 +136,7 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
       setLockingPath(path);
       const result = await addLockedFolder(path);
       if (result === "locked_unverified") {
-        setSuccess(`Folder locked (unverified — may require admin): ${path}`);
+        setSuccess(`Folder locked (unverified â€” may require admin): ${path}`);
       } else {
         setSuccess(`Folder locked & verified: ${path}`);
       }
@@ -155,7 +155,7 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
       setLockingPath(path);
       const result = await addLockedFile(path);
       if (result === "locked_unverified") {
-        setSuccess(`File locked (unverified — may require admin): ${path}`);
+        setSuccess(`File locked (unverified â€” may require admin): ${path}`);
       } else {
         setSuccess(`File locked & verified: ${path}`);
       }
@@ -232,9 +232,9 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <SectionHeader
-        eyebrow="FR-FILE · Windows NT DACL"
+        eyebrow="FR-FILE Â· AES-256-GCM"
         title="File, Folder & Drive Vault"
-        subtitle="Enforces access control by revoking GENERIC_ALL for EVERYONE, SYSTEM and Administrators via native security descriptors."
+        subtitle="Lock files and folders with AES-256-GCM encryption. Locked items become invisible .InnologyLock blobs in Explorer."
       />
 
       {error && <div className="p-3 rounded-lg bg-[color:var(--destructive)]/15 border border-[color:var(--destructive)]/30 text-sm text-[color:var(--destructive)]">{error}</div>}
@@ -268,7 +268,7 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
                     {lockingDrive === letter ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
                     {isLocked ? "Unlock" : "Lock"}
                   </button>
-                  <span className={isLocked ? "text-[color:var(--primary)]" : ""}>{isLocked ? "DACL Enforced" : "Unprotected"}</span>
+                  <span className={isLocked ? "text-[color:var(--primary)]" : ""}>{isLocked ? "Hidden" : "Unprotected"}</span>
                 </div>
               </div>
             );
@@ -310,7 +310,7 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
               </div>
               <div className="flex-1 min-w-0">
                 <code className="text-sm">{f}</code>
-                <div className="text-xs text-[color:var(--muted-foreground)] mt-0.5">Folder · <span className="text-[color:var(--warning)]">DENIED · EVERYONE</span></div>
+                <div className="text-xs text-[color:var(--muted-foreground)] mt-0.5">Folder Â· <span className="text-[color:var(--success)]">ENCRYPTED</span></div>
               </div>
               <button onClick={() => handleRemovePath(f, "folder")} disabled={lockingPath === f}
                       className="px-3 py-1.5 rounded-lg text-xs border border-[color:var(--primary)]/30 text-[color:var(--primary)] hover:bg-[color:var(--primary)]/10 flex items-center gap-1.5 disabled:opacity-40">
@@ -326,7 +326,7 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
               </div>
               <div className="flex-1 min-w-0">
                 <code className="text-sm">{f}</code>
-                <div className="text-xs text-[color:var(--muted-foreground)] mt-0.5">File · <span className="text-[color:var(--warning)]">DENIED · SYSTEM</span></div>
+                <div className="text-xs text-[color:var(--muted-foreground)] mt-0.5">File Â· <span className="text-[color:var(--success)]">ENCRYPTED</span></div>
               </div>
               <button onClick={() => handleRemovePath(f, "file")} disabled={lockingPath === f}
                       className="px-3 py-1.5 rounded-lg text-xs border border-[color:var(--primary)]/30 text-[color:var(--primary)] hover:bg-[color:var(--primary)]/10 flex items-center gap-1.5 disabled:opacity-40">
@@ -371,7 +371,7 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium truncate">{f.name}</div>
                 <div className="text-xs text-[color:var(--muted-foreground)] mt-0.5">
-                  {formatBytes(f.size)} · Added {formatDate(f.added_at)}
+                  {formatBytes(f.size)} Â· Added {formatDate(f.added_at)}
                 </div>
               </div>
               <button onClick={() => handleExtractFile(f)} disabled={busyFileId === f.id}
@@ -388,7 +388,7 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
           ))}
           {vaultFiles.length === 0 && (
             <div className="p-8 text-center text-[color:var(--muted-foreground)] text-sm">
-              {vaultFilesLoading ? "Loading..." : "No files stored yet. Add a file to keep it encrypted inside the vault — the original is removed from its location."}
+              {vaultFilesLoading ? "Loading..." : "No files stored yet. Add a file to keep it encrypted inside the vault â€” the original is removed from its location."}
             </div>
           )}
         </div>
@@ -402,7 +402,7 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
         </div>
         <div className="p-5">
           <p className="text-sm text-[color:var(--muted-foreground)] mb-4">
-            If a file or folder is locked but no longer appears in the vault (e.g. after reinstall), use this to unlock it. Select the locked item and OmniLock will restore normal permissions.
+            If a file or folder is locked but no longer appears in the vault (e.g. after reinstall), use this to unlock it. Select the locked item and InnologyLock will restore normal permissions.
           </p>
           <div className="flex items-center gap-3">
             <button onClick={handleRescuePickFolder} disabled={rescueLoading}
@@ -436,7 +436,7 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
               try {
                 const path = await pickFolder();
                 if (!path) return;
-                const filename = `omnilock_config_${Date.now()}.json`;
+                const filename = `InnologyLock_config_${Date.now()}.json`;
                 const fullPath = `${path}\\${filename}`;
                 const msg = await exportConfig(fullPath);
                 setSuccess(msg);

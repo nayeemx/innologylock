@@ -1,15 +1,15 @@
-[package]
-name = "omnilock"
+﻿[package]
+name = "innologylock"
 version = "0.0.39"
 authors = ["InnologyBD <support@innologybd.com>"]
 edition = "2021"
-description = "OmniLock - Windows 11 App, Folder & File Locker by InnologyBD"
+description = "InnologyLock - Windows 10/11 App, Folder & File Locker by InnologyBD"
 
 [build-dependencies]
 tauri-build = { version = "2.0.0", features = [] }
 
 [dependencies]
-omnilock-shared = { path = "../shared" }
+innologylock-shared = { path = "../shared" }
 tauri = { version = "2.0.0", features = ["tray-icon", "image-png"] }
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"

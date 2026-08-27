@@ -1,9 +1,9 @@
-use std::fs;
+﻿use std::fs;
 use std::path::PathBuf;
 
-pub use omnilock_shared::LockedItem;
+pub use innologylock_shared::LockedItem;
 
-const SERVICE_DIR: &str = "InnologyBD\\OmniLock";
+const SERVICE_DIR: &str = "InnologyBD\\InnologyLock";
 const STATE_FILE: &str = "service-state.json";
 const VAULT_FILE: &str = "vault.enc";
 
@@ -30,7 +30,7 @@ pub fn vault_dir() -> PathBuf {
 
 pub fn vault_path_appdata() -> PathBuf {
     let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(appdata).join("InnologyBD\\OmniLock\\vault.enc")
+    PathBuf::from(appdata).join("InnologyBD\\InnologyLock\\vault.enc")
 }
 
 pub fn vault_path_programdata() -> PathBuf {

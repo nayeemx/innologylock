@@ -1,16 +1,16 @@
-# OmniLock - Windows 11 App, Folder & File Locker
+﻿# InnologyLock - Windows 10/11 App, Folder & File Locker
 ## Build, Environment Setup & Deployment Specification
 
 **Document Version:** 2.0.0  
-**Product Name:** OmniLock  
+**Product Name:** InnologyLock  
 **Developer / Publisher:** InnologyBD  
-**Target Platform:** Windows 11 (x64 / ARM64)  
+**Target Platform:** Windows 10/11 (x64 / ARM64)  
 
 ---
 
 ## 1. Automated 1-Click Environment Setup Script (`setup_environment.ps1`)
 
-If your personal computer is missing **Rust**, **Node.js**, **Visual Studio C++ Build Tools**, or **WiX Toolchain**, simply run the automated PowerShell setup script included in `D:\projects\code\omnilock\docs\`:
+If your personal computer is missing **Rust**, **Node.js**, **Visual Studio C++ Build Tools**, or **WiX Toolchain**, simply run the automated PowerShell setup script included in `D:\projects\code\InnologyLock\docs\`:
 
 ```powershell
 # Open PowerShell as Administrator and run:
@@ -34,10 +34,10 @@ Set-ExecutionPolicy Unrestricted -Scope Process -Force
   <assemblyIdentity
     version="1.0.0.0"
     processorArchitecture="*"
-    name="com.innologybd.omnilock"
+    name="com.innologybd.InnologyLock"
     type="win32"
   />
-  <description>OmniLock - Windows 11 App, Folder and File Locker by InnologyBD</description>
+  <description>InnologyLock - Windows 11 App, Folder and File Locker by InnologyBD</description>
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
     <security>
       <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
@@ -60,9 +60,9 @@ Set-ExecutionPolicy Unrestricted -Scope Process -Force
 ```json
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "OmniLock",
+  "productName": "InnologyLock",
   "version": "1.0.0",
-  "identifier": "com.innologybd.omnilock",
+  "identifier": "com.innologybd.InnologyLock",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -73,14 +73,14 @@ Set-ExecutionPolicy Unrestricted -Scope Process -Force
     "updater": {
       "pubkey": "<public key from src-tauri/update.key.pub>",
       "endpoints": [
-        "https://api.github.com/repos/nayeemx/omnilock/releases/latest"
+        "https://api.github.com/repos/nayeemx/InnologyLock/releases/latest"
       ]
     }
   },
   "app": {
     "windows": [
       {
-        "title": "OmniLock - Enterprise Desktop Security",
+        "title": "InnologyLock - Enterprise Desktop Security",
         "width": 1280,
         "height": 800,
         "minWidth": 1024,
@@ -106,8 +106,8 @@ Set-ExecutionPolicy Unrestricted -Scope Process -Force
       "icons/icon.ico"
     ],
     "resources": [],
-    "copyright": "Copyright © 2026 InnologyBD. All rights reserved.",
-    "shortDescription": "OmniLock - Enterprise Desktop Security by InnologyBD",
+    "copyright": "Copyright Â© 2026 InnologyBD. All rights reserved.",
+    "shortDescription": "InnologyLock - Enterprise Desktop Security by InnologyBD",
     "longDescription": "Zero-trust enterprise desktop security tool. Application, folder, file & drive locker with Argon2id, AES-256-GCM, TOTP 2FA, and dual-process watchdog. Windows 10/11."
   }
 }
@@ -119,7 +119,7 @@ Set-ExecutionPolicy Unrestricted -Scope Process -Force
 
 ### Generate Key Pair
 ```powershell
-cd D:\projects\code\omnilock
+cd D:\projects\code\InnologyLock
 npx tauri signer generate -w src-tauri\update.key
 # Enter a password when prompted (e.g., 229689)
 # Public key will be at src-tauri\update.key.pub
@@ -139,27 +139,27 @@ npx tauri build
 
 ---
 
-## 5. GitHub Releases Setup (v0.0.35+ — CI automates this)
+## 5. GitHub Releases Setup (v0.0.35+ â€” CI automates this)
 
 The workflow `.github/workflows/build.yml` now builds the service + monitor, then:
-- **Tag push (`v*.*.*`)** → `tauri-apps/tauri-action` creates a **signed GitHub Release** with the installer + `.sig` attached (needs repo secrets `TAURI_SIGNING_PRIVATE_KEY` + `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`).
-- **Non-tagged push / workflow_dispatch** → build only, installer uploaded as a CI artifact.
+- **Tag push (`v*.*.*`)** â†’ `tauri-apps/tauri-action` creates a **signed GitHub Release** with the installer + `.sig` attached (needs repo secrets `TAURI_SIGNING_PRIVATE_KEY` + `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`).
+- **Non-tagged push / workflow_dispatch** â†’ build only, installer uploaded as a CI artifact.
 
 ### Release flow (recommended)
 1. Bump version to `0.0.35` in `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, and `package.json`.
 2. Commit everything (including updated `.md` files).
 3. `git tag v0.0.35 && git push origin main --tags`
 4. CI builds, signs, and publishes the release automatically.
-5. Verify the release page has `OmniLock_0.0.35_x64-setup.exe` + `.sig`, and that `latest.json`/updater endpoint resolves.
+5. Verify the release page has `InnologyLock_0.0.35_x64-setup.exe` + `.sig`, and that `latest.json`/updater endpoint resolves.
 
 ### Manual fallback (if CI is not used)
 ```powershell
 $env:TAURI_SIGNING_PRIVATE_KEY = Get-Content src-tauri\update.key -Raw
-$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "omnilock2026"
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "InnologyLock2026"
 npx tauri build
 # then create the release with gh CLI, attaching the installer + .sig
 ```
 
 ---
 
-*End of BUILD_SETUP.md (OmniLock v2.0.0)*
+*End of BUILD_SETUP.md (InnologyLock v2.0.0)*

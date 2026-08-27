@@ -1,4 +1,4 @@
-use std::fs::OpenOptions;
+﻿use std::fs::OpenOptions;
 use std::io::Write;
 use std::sync::Mutex;
 use std::time::SystemTime;
@@ -9,8 +9,8 @@ fn log_path() -> std::path::PathBuf {
     let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
     std::path::PathBuf::from(appdata)
         .join("InnologyBD")
-        .join("OmniLock")
-        .join("omnilock.log")
+        .join("InnologyLock")
+        .join("InnologyLock.log")
 }
 
 pub fn init() {

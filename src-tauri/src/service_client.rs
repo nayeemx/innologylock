@@ -1,5 +1,5 @@
-use std::time::Duration;
-pub use omnilock_shared::*;
+﻿use std::time::Duration;
+pub use innologylock_shared::*;
 
 fn pipe_request(req: &SvcRequest) -> Option<SvcResponse> {
     use std::os::windows::ffi::OsStrExt;

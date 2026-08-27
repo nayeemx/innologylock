@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "OmniLock",
+  "productName": "InnologyLock",
   "version": "0.0.39",
-  "identifier": "com.innologybd.omnilock",
+  "identifier": "com.innologybd.InnologyLock",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,8 +12,8 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://raw.githubusercontent.com/nayeemx/omnilock/main/latest.json",
-        "https://nayeemx.github.io/omnilock/latest.json"
+        "https://raw.githubusercontent.com/nayeemx/InnologyLock/main/latest.json",
+        "https://nayeemx.github.io/InnologyLock/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVERTU4Mzg1QkRFNzlCNkYKUldSdm0rZTloWVBsN2VVT2NTMlEzY2tuaGhWdDA2ZEU2SVJQcmJGTk5FL0NxbkVEZGZZczEyV3kK"
     }
@@ -21,7 +21,7 @@
   "app": {
     "windows": [
       {
-        "title": "OmniLock - Enterprise Desktop Security",
+        "title": "InnologyLock - Enterprise Desktop Security",
         "width": 1280,
         "height": 800,
         "minWidth": 1024,
@@ -47,11 +47,11 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "resources/omnilock-svc.exe",
-      "resources/omnilock-monitor.exe"
+      "resources/InnologyLock-svc.exe",
+      "resources/InnologyLock-monitor.exe"
     ],
-    "copyright": "Copyright © 2025-2026 InnologyBD. All rights reserved.",
-    "shortDescription": "OmniLock - Enterprise Desktop Security by InnologyBD",
+    "copyright": "Copyright Â© 2025-2026 InnologyBD. All rights reserved.",
+    "shortDescription": "InnologyLock - Enterprise Desktop Security by InnologyBD",
     "longDescription": "Zero-trust enterprise desktop security tool. Application, folder, file & drive locker with Argon2id, AES-256-GCM, TOTP 2FA, and dual-process watchdog. Windows 10/11.",
     "windows": {
       "nsis": {

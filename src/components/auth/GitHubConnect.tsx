@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+﻿import { useState, useEffect, useCallback } from "react";
 import { Github, Copy, Check, ExternalLink, Loader2, Unlink, Cloud, CloudOff, RefreshCw } from "lucide-react";
 import {
   githubStartDeviceFlow,
@@ -254,7 +254,7 @@ export function GitHubConnect({ onStatusChange }: { onStatusChange?: (connected:
       )}
 
       <div className="text-[10px] text-center text-[color:var(--muted-foreground)]">
-        Uses GitHub Device Flow. No password shared with OmniLock.
+        Uses GitHub Device Flow. No password shared with InnologyLock.
       </div>
     </div>
   );

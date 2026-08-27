@@ -1,4 +1,4 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+﻿#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::cell::RefCell;
 use std::sync::OnceLock;
@@ -9,7 +9,7 @@ use windows_sys::Win32::Storage::FileSystem::*;
 use windows_sys::Win32::Graphics::Gdi::*;
 use windows_sys::Win32::System::LibraryLoader::*;
 
-use omnilock_svc::ipc::{SvcRequest, SvcResponse, PIPE_NAME};
+use InnologyLock_svc::ipc::{SvcRequest, SvcResponse, PIPE_NAME};
 
 const WM_TRAY_ICON: u32 = 8001;
 const IDM_UNLOCK_BASE: usize = 9000;
@@ -85,7 +85,7 @@ unsafe fn get_text_from(hwnd: HWND, id: isize) -> String {
 unsafe fn show_unlock_dialog(item_path: &str, item_name: &str) {
     PENDING_UNLOCK_PATH.with(|p| { *p.borrow_mut() = item_path.to_string(); });
 
-    let class_name = w("OmniLockUnlockDlg");
+    let class_name = w("InnologyLockUnlockDlg");
     let mut wc: WNDCLASSW = std::mem::zeroed();
     wc.lpfnWndProc = Some(dialog_proc);
     wc.hInstance = GetModuleHandleW(std::ptr::null());
@@ -138,7 +138,7 @@ unsafe extern "system" fn dialog_proc(hwnd: HWND, msg: u32, wparam: WPARAM, _lpa
             if id == IDC_UNLOCK_BTN {
                 let password = get_text_from(hwnd, IDC_PASSWORD_EDIT);
                 if password.is_empty() {
-                    MessageBoxW(hwnd, w("Please enter a password").as_ptr(), w("OmniLock").as_ptr(), 0x00000030);
+                    MessageBoxW(hwnd, w("Please enter a password").as_ptr(), w("InnologyLock").as_ptr(), 0x00000030);
                     return 0;
                 }
                 let path = PENDING_UNLOCK_PATH.with(|p| p.borrow().clone());
@@ -149,7 +149,7 @@ unsafe extern "system" fn dialog_proc(hwnd: HWND, msg: u32, wparam: WPARAM, _lpa
                     Some(SvcResponse::Error { message }) => (message, 0x00000010),
                     _ => ("Service not reachable".to_string(), 0x00000010),
                 };
-                MessageBoxW(hwnd, w(&msg_text).as_ptr(), w("OmniLock").as_ptr(), 0x00000000 | icon);
+                MessageBoxW(hwnd, w(&msg_text).as_ptr(), w("InnologyLock").as_ptr(), 0x00000000 | icon);
                 refresh_items();
                 DestroyWindow(hwnd);
             } else if id == IDC_CANCEL_BTN || id == 2 {
@@ -194,7 +194,7 @@ unsafe fn add_tray_icon() {
     nid.uID = 1;
     nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     nid.uCallbackMessage = WM_TRAY_ICON;
-    let tip = w("OmniLock Monitor");
+    let tip = w("InnologyLock Monitor");
     let len = tip.len().min(128);
     nid.szTip[..len].copy_from_slice(&tip[..len]);
     nid.hIcon = LoadIconW(std::ptr::null_mut(), IDI_SHIELD as *const u16);
@@ -243,7 +243,7 @@ unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam:
 
 fn main() {
     unsafe {
-        let class_name = w("OmniLockMonitorWnd");
+        let class_name = w("InnologyLockMonitorWnd");
         let mut wc: WNDCLASSW = std::mem::zeroed();
         wc.lpfnWndProc = Some(wnd_proc);
         wc.hInstance = GetModuleHandleW(std::ptr::null());

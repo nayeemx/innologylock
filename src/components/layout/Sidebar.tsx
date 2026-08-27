@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { Activity, LogOut } from "lucide-react";
 import { type VaultConfigDto, getWatchdogStatus, type WatchdogStatusDto, lockNow } from "../../lib/tauri-bridge";
 import { tabs, type TabId } from "../types";
@@ -27,10 +27,10 @@ export function Sidebar({ tab, setTab, config, onLogout }: { tab: TabId; setTab:
     <aside className="w-72 shrink-0 p-5 border-r border-[color:var(--border)] glass-subtle flex flex-col gap-2">
       <div className="flex items-center gap-3 px-2 pt-1 pb-6">
         <div className="relative w-11 h-11 rounded-xl overflow-hidden glow-cyan">
-          <img src="/icon.png" alt="OmniLock" className="w-full h-full object-cover" />
+          <img src="/icon.png" alt="InnologyLock" className="w-full h-full object-cover" />
         </div>
         <div>
-          <div className="text-lg font-semibold tracking-tight">OmniLock</div>
+          <div className="text-lg font-semibold tracking-tight">InnologyLock</div>
           <div className="text-[11px] text-[color:var(--muted-foreground)] tracking-wider uppercase">by InnologyBD</div>
         </div>
       </div>
@@ -68,10 +68,10 @@ export function Sidebar({ tab, setTab, config, onLogout }: { tab: TabId; setTab:
         </div>
         <div className="flex items-baseline justify-between mb-2">
           <span className="text-2xl font-semibold">{watchdog?.status || "Starting"}</span>
-          <span className="text-xs text-[color:var(--success)]">● {watchdog ? "Healthy" : "Initializing"}</span>
+          <span className="text-xs text-[color:var(--success)]">â— {watchdog ? "Healthy" : "Initializing"}</span>
         </div>
         <div className="text-xs text-[color:var(--muted-foreground)]">
-          omnilock.exe · PID {watchdog?.pid || "..."}
+          InnologyLock.exe Â· PID {watchdog?.pid || "..."}
         </div>
         <div className="mt-3 pt-3 border-t border-[color:var(--border)] text-xs text-[color:var(--muted-foreground)]">
           Uptime <span className="text-[color:var(--foreground)]">{watchdog ? formatUptime(watchdog.uptime_secs) : "..."}</span>

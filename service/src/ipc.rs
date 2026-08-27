@@ -1,1 +1,1 @@
-pub use omnilock_shared::*;
+﻿pub use innologylock_shared::*;

@@ -1,11 +1,11 @@
-# ACL Recursive Unlock Test Script
+﻿# ACL Recursive Unlock Test Script
 # This script tests the fix for the file-unlock child ACL inheritance gap
 
-Write-Host "=== OmniLock ACL Recursive Unlock Test ===" -ForegroundColor Cyan
+Write-Host "=== InnologyLock ACL Recursive Unlock Test ===" -ForegroundColor Cyan
 Write-Host ""
 
 # Test parameters
-$testFolder = "D:\OmniLockTest_Folder"
+$testFolder = "D:\InnologyLockTest_Folder"
 $testFile1 = "$testFolder\test1.txt"
 $testFile2 = "$testFolder\test2.txt"
 $testSubFolder = "$testFolder\subfolder"
@@ -47,20 +47,20 @@ Get-Acl $testSubFolder | Format-List
 Get-Acl $testFile3 | Format-List
 Write-Host ""
 
-# Note: To test the actual OmniLock unlock, you would need to:
+# Note: To test the actual InnologyLock unlock, you would need to:
 # 1. Build the application with the fix
-# 2. Lock the folder using OmniLock
+# 2. Lock the folder using InnologyLock
 # 3. Try to access the files (should fail)
-# 4. Unlock the folder using OmniLock
+# 4. Unlock the folder using InnologyLock
 # 5. Verify files are accessible again
 
 Write-Host "=== Test Instructions ===" -ForegroundColor Yellow
-Write-Host "1. Build OmniLock: npm run tauri build" -ForegroundColor White
+Write-Host "1. Build InnologyLock: npm run tauri build" -ForegroundColor White
 Write-Host "2. Install the application" -ForegroundColor White
 Write-Host "3. Create a vault and unlock" -ForegroundColor White
 Write-Host "4. Lock the folder: $testFolder" -ForegroundColor White
 Write-Host "5. Try to access files inside (should get Access Denied)" -ForegroundColor White
-Write-Host "6. Unlock the folder using OmniLock" -ForegroundColor White
+Write-Host "6. Unlock the folder using InnologyLock" -ForegroundColor White
 Write-Host "7. Verify files are now accessible:" -ForegroundColor White
 Write-Host "   - $testFile1" -ForegroundColor White
 Write-Host "   - $testFile2" -ForegroundColor White

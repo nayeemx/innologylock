@@ -1,20 +1,20 @@
-# OmniLock - Windows 11 App, Folder & File Locker
+﻿# InnologyLock - Windows 10/11 App, Folder & File Locker
 ## Product Requirements Document (PRD)
 
 **Document Version:** 1.4.0  
-**Product Name:** OmniLock  
+**Product Name:** InnologyLock  
 **Developer / Publisher:** InnologyBD (Featured in About dialog & Footer)  
 **Status:** Approved for Architectural Design & Implementation  
-**Target Platform:** Windows 11 (64-bit / ARM64)  
+**Target Platform:** Windows 10/11 (64-bit / ARM64)  
 **Core Technologies:** Rust, Tauri v2, React 18, Windows API (Win32/NT), Argon2id, AES-256-GCM (vault + file encryption), RFC 6238 TOTP, Windows Biometric Framework (direct fingerprint)  
 
-> **Implementation note (v0.0.35):** file/folder protection is implemented with **AES-256-GCM in-place encryption** (`.omnilock` blobs), NOT Windows NT ACL lockdown — the ACL approach permanently removed the owner's access and was replaced. Windows NT ACLs remain only in the legacy service daemon for backward compatibility; new locks bypass it. See AGENTS.md.
+> **Implementation note (v0.0.35):** file/folder protection is implemented with **AES-256-GCM in-place encryption** (`.InnologyLock` blobs), NOT Windows NT ACL lockdown â€” the ACL approach permanently removed the owner's access and was replaced. Windows NT ACLs remain only in the legacy service daemon for backward compatibility; new locks bypass it. See AGENTS.md.
 
 ---
 
 ## 1. Executive Summary & Product Vision
 
-**OmniLock** is a sleek, ultra-modern desktop security application for Windows 11 developed by **InnologyBD**. Designed to provide mobile-like application, folder, file, and drive locking capabilities, OmniLock implements a **zero-trust, kernel/user-mode hybrid protection model**.
+**InnologyLock** is a sleek, ultra-modern desktop security application for Windows 10/11 developed by **InnologyBD**. Designed to provide mobile-like application, folder, file, and drive locking capabilities, InnologyLock implements a **zero-trust, kernel/user-mode hybrid protection model**.
 
 It features:
 1. **Application Protection**: Deep process monitoring and window hooking that prevents unauthorized launching, execution, or interaction with specified `.exe` executables.
@@ -30,9 +30,9 @@ It features:
 
 ## 2. Branding & Footer Metadata
 
-- **Application Display Name**: **OmniLock**
-- **Footer Text**: `Powered by InnologyBD © 2026. All rights reserved.`
-- **About Window**: Displays "OmniLock v1.0.0 by InnologyBD - Enterprise Desktop Security Solution".
+- **Application Display Name**: **InnologyLock**
+- **Footer Text**: `Powered by InnologyBD Â© 2026. All rights reserved.`
+- **About Window**: Displays "InnologyLock v1.0.0 by InnologyBD - Enterprise Desktop Security Solution".
 
 ---
 
@@ -44,7 +44,7 @@ It features:
 |:---|:---|:---|
 | **FR-AUTH-01** | **Setup Wizard**: On first launch, force user to create a Master Password (min 8 chars, including uppercase, lowercase, numbers, and symbols). | **P0 (Critical)** |
 | **FR-AUTH-02** | **Argon2id Password Hashing**: Master Password MUST be hashed using Argon2id with unique 16-byte random salt, high memory cost (64MB), and time cost (3 iterations). | **P0 (Critical)** |
-| **FR-AUTH-03** | **AES-256-GCM Storage**: Config stored in encrypted vault (`vault.enc`) under `%APPDATA%\InnologyBD\OmniLock\` with AES-256-GCM. | **P0 (Critical)** |
+| **FR-AUTH-03** | **AES-256-GCM Storage**: Config stored in encrypted vault (`vault.enc`) under `%APPDATA%\InnologyBD\InnologyLock\` with AES-256-GCM. | **P0 (Critical)** |
 | **FR-AUTH-04** | **Two-Factor Authentication (TOTP)**: RFC 6238 TOTP engine with QR code generator & 2FA enforcement. | **P0 (Critical)** |
 | **FR-AUTH-05** | **Session Auto-Lock**: Configurable auto-lock timer (Immediate, 1 min, 5 min, 15 min, Screen Lock / Sleep). | **P0 (Critical)** |
 | **FR-AUTH-06** | **Auto-Update**: Check for and install updates from GitHub Releases with signed artifacts. | **P1 (High)** |
@@ -62,18 +62,18 @@ It features:
 | ID | Requirement Description | Priority |
 |:---|:---|:---|
 | **FR-FILE-01** | **Folder & File Selection**: Add files or folders via Drag-and-Drop or Native Dialog. | **P0 (Critical)** |
-| **FR-FILE-02** | **Drive Volume Protection**: Ability to lock entire drive volumes (e.g. `D:\`, `E:\`) via `NoDrives` Explorer policy (+ drive-root encryption — see AGENTS.md design concern). | **P0 (Critical)** |
-| **FR-FILE-03** | **File/Folder Protection**: Encrypt file contents with AES-256-GCM in place (`original` → `original.omnilock`) so they are unreadable without the vault key; folder stays browsable. (Supersedes the old ACL lockdown, which permanently removed owner access.) | **P0 (Critical)** |
-| **FR-FILE-04** | **Vault Storage (v0.0.36)**: Store arbitrary user files privately inside the vault — files are encrypted with the vault's file key and kept under `%APPDATA%\InnologyBD\OmniLock\storage\` under random names; the manifest is encrypted too, so stored names never leak. Add / Extract / Delete from the Vault page. | **P1 (High)** |
+| **FR-FILE-02** | **Drive Volume Protection**: Ability to lock entire drive volumes (e.g. `D:\`, `E:\`) via `NoDrives` Explorer policy (+ drive-root encryption â€” see AGENTS.md design concern). | **P0 (Critical)** |
+| **FR-FILE-03** | **File/Folder Protection**: Encrypt file contents with AES-256-GCM in place (`original` â†’ `original.InnologyLock`) so they are unreadable without the vault key; folder stays browsable. (Supersedes the old ACL lockdown, which permanently removed owner access.) | **P0 (Critical)** |
+| **FR-FILE-04** | **Vault Storage (v0.0.36)**: Store arbitrary user files privately inside the vault â€” files are encrypted with the vault's file key and kept under `%APPDATA%\InnologyBD\InnologyLock\storage\` under random names; the manifest is encrypted too, so stored names never leak. Add / Extract / Delete from the Vault page. | **P1 (High)** |
 | **FR-FILE-05** | **Stale-Unlock Reconciliation (v0.0.36)**: After restart + login, detect items still listed as locked but no longer encrypted on disk (temp-unlock that was never re-locked) and let the user **Re-lock all** or **Keep unlocked**. | **P1 (High)** |
 
 ---
 
 ## 4. User Interface (UI) Specifications
 
-- **App Name**: OmniLock
+- **App Name**: InnologyLock
 - **Theme**: Dark Glassmorphism aesthetic (`#09090B`), vibrant neon cyan/violet accents (`#06B6D4`, `#8B5CF6`), frosted glass blur panels (`backdrop-filter: blur(16px)`).
-- **Footer**: `OmniLock Security System • Developed by InnologyBD`
+- **Footer**: `InnologyLock Security System â€¢ Developed by InnologyBD`
 - **Tabs**:
   1. **Application Locker**: Searchable app list, SHA-256 status, "Add App" auto-scanner.
   2. **System & Installer Presets**: 1-click preset switches for Task Manager, Control Panel, Registry, PowerShell/CMD, and Software Installers.
@@ -81,4 +81,4 @@ It features:
   4. **Security & 2FA Settings**: TOTP QR code manager, 3-Tier Recovery Key viewer, Panic Hotkey customizer, Auto-lock timer.
 
 ---
-*End of PRD.md (OmniLock v1.4.0)*
+*End of PRD.md (InnologyLock v1.4.0)*

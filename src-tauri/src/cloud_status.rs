@@ -1,4 +1,4 @@
-#![allow(non_snake_case)]
+﻿#![allow(non_snake_case)]
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -78,7 +78,7 @@ pub fn shutdown() {
         }
     }
 
-    let reg_key = format!(r"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\SyncRootManager\OmniLock");
+    let reg_key = format!(r"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\SyncRootManager\InnologyLock");
     let _ = crate::hidden_cmd("reg")
         .args(["delete", &reg_key, "/f"])
         .output();
@@ -86,7 +86,7 @@ pub fn shutdown() {
 }
 
 fn register_sync_root(vault_root: &str) -> Result<(), String> {
-    let id = format!("OmniLock_{}", uuid::Uuid::new_v4());
+    let id = format!("InnologyLock_{}", uuid::Uuid::new_v4());
     let info = StorageProviderSyncRootInfo::new().map_err(|e| format!("Failed to create SyncRootInfo: {}", e))?;
 
     let id_hstring = HSTRING::from(&id);
@@ -98,7 +98,7 @@ fn register_sync_root(vault_root: &str) -> Result<(), String> {
         .map_err(|e| format!("Failed to get StorageFolder for path: {}", e))?;
     info.SetPath(&folder).map_err(|e| format!("Failed to set Path: {}", e))?;
 
-    let display_name = HSTRING::from("OmniLock");
+    let display_name = HSTRING::from("InnologyLock");
     info.SetDisplayNameResource(&display_name).map_err(|e| format!("Failed to set DisplayName: {}", e))?;
 
     let icon_resource = HSTRING::from("%SystemRoot%\\system32\\imageres.dll,204");
@@ -127,17 +127,17 @@ fn register_sync_root(vault_root: &str) -> Result<(), String> {
 }
 
 fn register_sync_root_registry(vault_root: &str) {
-    let reg_base = r"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\SyncRootManager\OmniLock";
+    let reg_base = r"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\SyncRootManager\InnologyLock";
     let _ = crate::hidden_cmd("reg")
-        .args(["add", reg_base, "/ve", "/d", "OmniLock", "/f"])
+        .args(["add", reg_base, "/ve", "/d", "InnologyLock", "/f"])
         .output();
 
     let id_path = format!(r"{}\SyncRootId", reg_base);
     let _ = crate::hidden_cmd("reg")
-        .args(["add", &id_path, "/ve", "/d", "OmniLock", "/f"])
+        .args(["add", &id_path, "/ve", "/d", "InnologyLock", "/f"])
         .output();
 
-    let user_sync_roots = format!(r"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\UserSyncRoots\OmniLock");
+    let user_sync_roots = format!(r"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\UserSyncRoots\InnologyLock");
     let _ = crate::hidden_cmd("reg")
         .args(["add", &user_sync_roots, "/v", "IsSyncRoot", "/t", "REG_DWORD", "/d", "1", "/f"])
         .output();
@@ -147,10 +147,10 @@ fn register_sync_root_registry(vault_root: &str) {
         .output();
 
     let _ = crate::hidden_cmd("reg")
-        .args(["add", reg_base, "/v", "DisplayName", "/d", "OmniLock", "/f"])
+        .args(["add", reg_base, "/v", "DisplayName", "/d", "InnologyLock", "/f"])
         .output();
 
-    SyncRootId::store("OmniLock");
+    SyncRootId::store("InnologyLock");
     logger::log("CLOUD", "Sync root registered via registry fallback");
 }
 
@@ -222,7 +222,7 @@ fn write_companion_status(path: &str, locked: bool) -> Result<(), String> {
         p.parent().map(|x| x.to_path_buf()).unwrap_or_else(|| p.to_path_buf())
     };
 
-    let status_dir = parent.join(".omnilock");
+    let status_dir = parent.join(".InnologyLock");
     std::fs::create_dir_all(&status_dir).map_err(|e| format!("Cannot create status dir: {}", e))?;
 
     let file_name = p.file_name()

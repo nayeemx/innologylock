@@ -1,7 +1,7 @@
+﻿# ============================================================================
+# InnologyLock by InnologyBD - Automated Windows Environment & Dependency Setup
 # ============================================================================
-# OmniLock by InnologyBD - Automated Windows Environment & Dependency Setup
-# ============================================================================
-# This script automatically checks your Windows PC for all required OmniLock
+# This script automatically checks your Windows PC for all required InnologyLock
 # build dependencies (Node.js, Rust/Cargo, MSVC C++ Build Tools, WiX/NSIS),
 # and automatically downloads & installs any missing toolchain items.
 # ============================================================================
@@ -12,7 +12,7 @@ param()
 $ErrorActionPreference = "Stop"
 
 Write-Host "========================================================================" -ForegroundColor Cyan
-Write-Host "       OmniLock (by InnologyBD) - Automated Environment Setup" -ForegroundColor Cyan
+Write-Host "       InnologyLock (by InnologyBD) - Automated Environment Setup" -ForegroundColor Cyan
 Write-Host "========================================================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -86,5 +86,5 @@ if ((Test-CommandExists "light") -or (Test-CommandExists "makensis")) {
 
 Write-Host ""
 Write-Host "========================================================================" -ForegroundColor Cyan
-Write-Host "       Environment Setup Complete! You can now build OmniLock." -ForegroundColor Green
+Write-Host "       Environment Setup Complete! You can now build InnologyLock." -ForegroundColor Green
 Write-Host "========================================================================" -ForegroundColor Cyan

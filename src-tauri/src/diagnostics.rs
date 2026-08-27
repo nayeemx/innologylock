@@ -1,4 +1,4 @@
-use serde::Serialize;
+﻿use serde::Serialize;
 
 #[derive(Serialize)]
 pub struct Diagnostics {
@@ -62,7 +62,7 @@ fn check_locked_items() -> Vec<LockItemCheck> {
     let mut checks = Vec::new();
     let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
     let items_path = std::path::PathBuf::from(&appdata)
-        .join("InnologyBD\\OmniLock\\locked_items.json");
+        .join("InnologyBD\\InnologyLock\\locked_items.json");
     if !items_path.exists() {
         return checks;
     }

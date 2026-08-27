@@ -1,4 +1,4 @@
-use std::ffi::OsString;
+﻿use std::ffi::OsString;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -6,10 +6,10 @@ use windows_service::service::*;
 use windows_service::service_control_handler::{self, ServiceControlHandlerResult, ServiceStatusHandle};
 use windows_service::service_dispatcher;
 
-use omnilock_svc::acl;
-use omnilock_svc::ipc::{SvcRequest, SvcResponse, PIPE_NAME};
-use omnilock_svc::state::{self, LockedItemsState};
-use omnilock_svc::vault;
+use InnologyLock_svc::acl;
+use InnologyLock_svc::ipc::{SvcRequest, SvcResponse, PIPE_NAME};
+use InnologyLock_svc::state::{self, LockedItemsState};
+use InnologyLock_svc::vault;
 
 use windows_sys::Win32::Foundation::*;
 use windows_sys::Win32::Security::*;
@@ -26,7 +26,7 @@ fn main() {
         }
         return;
     }
-    service_dispatcher::start("OmniLockService", ffi_service_main).unwrap();
+    service_dispatcher::start("InnologyLockService", ffi_service_main).unwrap();
 }
 
 fn run_standalone() -> Result<(), Box<dyn std::error::Error>> {
@@ -58,7 +58,7 @@ extern "system" fn ffi_service_main(_argc: u32, _argv: *mut *mut u16) {
 
 fn run_service() -> Result<(), Box<dyn std::error::Error>> {
     let status_handle = service_control_handler::register(
-        OsString::from("OmniLockService"),
+        OsString::from("InnologyLockService"),
         handle_control,
     )?;
 
@@ -131,7 +131,7 @@ fn log(msg: &str) {
     use std::io::Write;
     let _ = std::fs::OpenOptions::new()
         .create(true).append(true)
-        .open(r"C:\ProgramData\InnologyBD\OmniLock\svc.log")
+        .open(r"C:\ProgramData\InnologyBD\InnologyLock\svc.log")
         .and_then(|mut f| writeln!(f, "[{}] {}", chrono_str(), msg));
 }
 

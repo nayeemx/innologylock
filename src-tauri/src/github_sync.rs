@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+﻿use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -9,7 +9,7 @@ const GITHUB_CLIENT_ID: &str = "Ov23li9jwqq1jy88qziH";
 const GITHUB_DEVICE_URL: &str = "https://github.com/login/device/code";
 const GITHUB_TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
 const GITHUB_API: &str = "https://api.github.com";
-const GIST_DESCRIPTION: &str = "OmniLock Vault Backup";
+const GIST_DESCRIPTION: &str = "InnologyLock Vault Backup";
 const VAULT_FILENAME: &str = "vault.enc";
 const META_FILENAME: &str = "vault.meta.json";
 
@@ -65,7 +65,7 @@ pub struct SyncStatus {
 
 fn sync_meta_path() -> PathBuf {
     let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
-    let dir = std::path::PathBuf::from(appdata).join("InnologyBD\\OmniLock");
+    let dir = std::path::PathBuf::from(appdata).join("InnologyBD\\InnologyLock");
     fs::create_dir_all(&dir).ok();
     dir.join("sync.meta.json")
 }
@@ -330,7 +330,7 @@ async fn fetch_github_user(token: &str) -> Result<GitHubUser, String> {
         .get(format!("{}/user", GITHUB_API))
         .header("Authorization", format!("Bearer {}", token))
         .header("Accept", "application/json")
-        .header("User-Agent", "OmniLock/0.1.0")
+        .header("User-Agent", "InnologyLock/0.1.0")
         .send()
         .await
         .map_err(|e| format!("Failed to fetch GitHub user: {}", e))?;
@@ -347,7 +347,7 @@ pub async fn create_or_find_gist(token: &str) -> Result<String, String> {
         .get(format!("{}/gists?per_page=100", GITHUB_API))
         .header("Authorization", format!("Bearer {}", token))
         .header("Accept", "application/json")
-        .header("User-Agent", "OmniLock/0.1.0")
+        .header("User-Agent", "InnologyLock/0.1.0")
         .send()
         .await
         .map_err(|e| format!("Failed to list gists: {}", e))?;
@@ -378,7 +378,7 @@ pub async fn create_or_find_gist(token: &str) -> Result<String, String> {
         .post(format!("{}/gists", GITHUB_API))
         .header("Authorization", format!("Bearer {}", token))
         .header("Accept", "application/json")
-        .header("User-Agent", "OmniLock/0.1.0")
+        .header("User-Agent", "InnologyLock/0.1.0")
         .json(&body)
         .send()
         .await
@@ -416,7 +416,7 @@ pub async fn upload_vault(
         .patch(format!("{}/gists/{}", GITHUB_API, gist_id))
         .header("Authorization", format!("Bearer {}", token))
         .header("Accept", "application/json")
-        .header("User-Agent", "OmniLock/0.1.0")
+        .header("User-Agent", "InnologyLock/0.1.0")
         .json(&body)
         .send()
         .await
@@ -441,7 +441,7 @@ pub async fn download_vault(
         .get(format!("{}/gists/{}", GITHUB_API, gist_id))
         .header("Authorization", format!("Bearer {}", token))
         .header("Accept", "application/json")
-        .header("User-Agent", "OmniLock/0.1.0")
+        .header("User-Agent", "InnologyLock/0.1.0")
         .send()
         .await
         .map_err(|e| format!("Failed to download gist: {}", e))?;

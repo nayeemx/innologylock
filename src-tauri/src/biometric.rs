@@ -1,9 +1,9 @@
-// Windows Hello (UserConsentVerifier) integration.
+﻿// Windows Hello (UserConsentVerifier) integration.
 // HARDWARE FINDING (proven on HP EliteBook 850 G5, Synaptics VFS7552, 2026-08-16):
 // the WBF driver refuses to deliver fingerprint captures to background apps
 // (WinBioIdentify blocks forever, sensor logs zero events). The ONLY working
 // fingerprint path on this machine is Windows Hello's own verification prompt.
-// So OmniLock asks Windows Hello to verify the fingerprint — the same pipeline
+// So InnologyLock asks Windows Hello to verify the fingerprint â€” the same pipeline
 // that signs the user in at the lock screen. Windows sign-in stays untouched.
 
 use serde::Serialize;
@@ -19,7 +19,7 @@ fn biometric_token_path() -> PathBuf {
     let app_data = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
     PathBuf::from(app_data)
         .join("InnologyBD")
-        .join("OmniLock")
+        .join("InnologyLock")
         .join("biometric.token")
 }
 
@@ -32,7 +32,7 @@ fn powershell51_path() -> String {
 /// True only if Windows Hello can verify the fingerprint for the current user.
 /// Asks Windows directly via `UserConsentVerifier.CheckAvailabilityAsync()`
 /// (PowerShell 5.1 + AsTask). NOTE: registry-based checks (WindowsHello\Enabled,
-/// Bio\Credential Provider) are NOT reliable — they are absent on Windows 11
+/// Bio\Credential Provider) are NOT reliable â€” they are absent on Windows 11
 /// machines where the Hello prompt works fine (proven on the HP EliteBook 850 G5).
 pub fn check_biometric_available() -> BiometricStatus {
     let ps = powershell51_path();
@@ -104,9 +104,9 @@ pub fn check_biometric_available() -> BiometricStatus {
     }
 }
 
-// ── core authentication via Windows Hello ────────────────────────────────────
+// â”€â”€ core authentication via Windows Hello â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //
-// NOTE: the result type is `UserConsentVerificationResult` — the old code used
+// NOTE: the result type is `UserConsentVerificationResult` â€” the old code used
 // `UserConsentVerifierResult` which does NOT exist as a WinRT type and made the
 // prompt fail on real hardware ("Unable to find type ..."). Verified working:
 // the prompt appears, the touch is accepted, `Verified` is returned.
@@ -180,7 +180,7 @@ pub async fn authenticate_biometric(message: String) -> Result<bool, String> {
     }
 }
 
-// ── DPAPI token persistence ──────────────────────────────────────────────────
+// â”€â”€ DPAPI token persistence â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 pub fn save_biometric_token(password: &str) -> Result<(), String> {
     let path = biometric_token_path();
@@ -193,7 +193,7 @@ pub fn save_biometric_token(password: &str) -> Result<(), String> {
          try {{ \
            Add-Type -AssemblyName System.Security; \
            $b=[System.Text.Encoding]::UTF8.GetBytes('{}'); \
-           $ent=[System.Text.Encoding]::UTF8.GetBytes('OmniLock2026Biometric'); \
+           $ent=[System.Text.Encoding]::UTF8.GetBytes('InnologyLock2026Biometric'); \
            $p=[System.Security.Cryptography.ProtectedData]::Protect($b,$ent,[System.Security.Cryptography.DataProtectionScope]::CurrentUser); \
            [System.IO.File]::WriteAllBytes('{}', $p); 'OK' \
          }} catch {{ Write-Error $_.Exception.Message; exit 1 }}",
@@ -221,7 +221,7 @@ pub fn load_biometric_token() -> Result<String, String> {
          try {{ \
            Add-Type -AssemblyName System.Security; \
            $p=[System.IO.File]::ReadAllBytes('{}'); \
-           $ent=[System.Text.Encoding]::UTF8.GetBytes('OmniLock2026Biometric'); \
+           $ent=[System.Text.Encoding]::UTF8.GetBytes('InnologyLock2026Biometric'); \
            $b=[System.Security.Cryptography.ProtectedData]::Unprotect($p,$ent,[System.Security.Cryptography.DataProtectionScope]::CurrentUser); \
            [System.Text.Encoding]::UTF8.GetString($b) \
          }} catch {{ Write-Error $_.Exception.Message; exit 1 }}",

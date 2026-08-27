@@ -1,9 +1,9 @@
-[package]
-name = "omnilock-shared"
+﻿[package]
+name = "innologylock-shared"
 version = "0.0.28"
 authors = ["InnologyBD <support@innologybd.com>"]
 edition = "2021"
-description = "OmniLock Shared - Pipe protocol types"
+description = "InnologyLock Shared - Pipe protocol types"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
+﻿use serde::{Deserialize, Serialize};
 
-pub const PIPE_NAME: &str = r"\\.\pipe\OmniLockService";
+pub const PIPE_NAME: &str = r"\\.\pipe\InnologyLockService";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LockedItem {

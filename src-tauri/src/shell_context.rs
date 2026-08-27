@@ -17,59 +17,59 @@ pub fn install() -> Result<(), String> {
     install_for("*", &exe_str)?;
     install_for("Directory", &exe_str)?;
     install_for("Drive", &exe_str)?;
-    register_omnilock_extension(&exe_str)?;
+    register_innology_lock_extension(&exe_str)?;
 
     CONTEXT_MENU_INSTALLED.store(true, Ordering::SeqCst);
     logger::log("MENU", &format!("Context menu installed for: {}", exe_str));
     Ok(())
 }
 
-/// Register only the `.omnilock` file association (no context-menu entries).
+/// Register only the `.InnologyLock` file association (no context-menu entries).
 /// Called automatically at app startup so double-clicking a locked file opens
-/// the unlock widget. Idempotent — safe to call on every launch.
+/// the unlock widget. Idempotent â€” safe to call on every launch.
 pub fn register_extension_only() -> Result<(), String> {
     let exe_path = std::env::current_exe()
         .map_err(|e| format!("Cannot get exe path: {}", e))?;
     let exe_str = exe_path.to_string_lossy().to_string();
-    register_omnilock_extension(&exe_str)
+    register_innology_lock_extension(&exe_str)
 }
 
-/// Register the .omnilock file extension so double-clicking an encrypted file
-/// opens OmniLock with --open-locked <path>, which shows the unlock widget.
-fn register_omnilock_extension(exe_path: &str) -> Result<(), String> {
-    // .omnilock → OmniLockFile
+/// Register the .InnologyLock file extension so double-clicking an encrypted file
+/// opens InnologyLock with --open-locked <path>, which shows the unlock widget.
+fn register_innology_lock_extension(exe_path: &str) -> Result<(), String> {
+    // .InnologyLock â†’ InnologyLockFile
     let _ = crate::hidden_cmd("reg")
-        .args(["add", r"HKEY_CLASSES_ROOT\.omnilock", "/ve", "/d", "OmniLockFile", "/f"])
+        .args(["add", r"HKEY_CLASSES_ROOT\.InnologyLock", "/ve", "/d", "InnologyLockFile", "/f"])
         .output();
 
     // ProgID description
     let _ = crate::hidden_cmd("reg")
-        .args(["add", r"HKEY_CLASSES_ROOT\OmniLockFile", "/ve", "/d", "OmniLock Encrypted File", "/f"])
+        .args(["add", r"HKEY_CLASSES_ROOT\InnologyLockFile", "/ve", "/d", "InnologyLock Encrypted File", "/f"])
         .output();
 
     // Icon
     let _ = crate::hidden_cmd("reg")
-        .args(["add", r"HKEY_CLASSES_ROOT\OmniLockFile\DefaultIcon", "/ve", "/d", exe_path, "/f"])
+        .args(["add", r"HKEY_CLASSES_ROOT\InnologyLockFile\DefaultIcon", "/ve", "/d", exe_path, "/f"])
         .output();
 
-    // Open command → OmniLock.exe --open-locked "%1"
+    // Open command â†’ InnologyLock.exe --open-locked "%1"
     let open_cmd = format!("\"{}\" --open-locked \"%1\"", exe_path);
     let _ = crate::hidden_cmd("reg")
-        .args(["add", r"HKEY_CLASSES_ROOT\OmniLockFile\shell\open\command", "/ve", "/d", &open_cmd, "/f"])
+        .args(["add", r"HKEY_CLASSES_ROOT\InnologyLockFile\shell\open\command", "/ve", "/d", &open_cmd, "/f"])
         .output();
 
     // Notify shell
     let _ = crate::hidden_cmd("ie4uinit.exe").args(["-show"]).output();
 
-    logger::log("MENU", "Registered .omnilock file extension");
+    logger::log("MENU", "Registered .InnologyLock file extension");
     Ok(())
 }
 
 fn install_for(reg_type: &str, exe_path: &str) -> Result<(), String> {
-    let base = format!(r"HKEY_CLASSES_ROOT\{}\shell\OmniLock", reg_type);
+    let base = format!(r"HKEY_CLASSES_ROOT\{}\shell\InnologyLock", reg_type);
 
     let _ = crate::hidden_cmd("reg")
-        .args(["add", &base, "/ve", "/d", "Lock with OmniLock", "/f"])
+        .args(["add", &base, "/ve", "/d", "Lock with InnologyLock", "/f"])
         .output()
         .map_err(|e| format!("reg add failed: {}", e))?;
 
@@ -90,9 +90,9 @@ fn install_for(reg_type: &str, exe_path: &str) -> Result<(), String> {
         .output()
         .map_err(|e| format!("reg add command failed: {}", e))?;
 
-    let unlock_base = format!(r"HKEY_CLASSES_ROOT\{}\shell\OmniLockUnlock", reg_type);
+    let unlock_base = format!(r"HKEY_CLASSES_ROOT\{}\shell\InnologyLockUnlock", reg_type);
     let _ = crate::hidden_cmd("reg")
-        .args(["add", &unlock_base, "/ve", "/d", "Unlock with OmniLock", "/f"])
+        .args(["add", &unlock_base, "/ve", "/d", "Unlock with InnologyLock", "/f"])
         .output()
         .map_err(|e| format!("reg add unlock base failed: {}", e))?;
 
@@ -113,13 +113,13 @@ fn install_for(reg_type: &str, exe_path: &str) -> Result<(), String> {
 
 pub fn uninstall() -> Result<(), String> {
     for reg_type in &["*", "Directory", "Drive"] {
-        let base = format!(r"HKEY_CLASSES_ROOT\{}\shell\OmniLock", reg_type);
+        let base = format!(r"HKEY_CLASSES_ROOT\{}\shell\InnologyLock", reg_type);
         let _ = crate::hidden_cmd("reg")
             .args(["delete", &base, "/f"])
             .output()
             .map_err(|e| format!("reg delete lock failed: {}", e))?;
 
-        let unlock_base = format!(r"HKEY_CLASSES_ROOT\{}\shell\OmniLockUnlock", reg_type);
+        let unlock_base = format!(r"HKEY_CLASSES_ROOT\{}\shell\InnologyLockUnlock", reg_type);
         let _ = crate::hidden_cmd("reg")
             .args(["delete", &unlock_base, "/f"])
             .output()
@@ -131,7 +131,7 @@ pub fn uninstall() -> Result<(), String> {
     Ok(())
 }
 
-/// Write a pending context menu action to a temp file that the running OmniLock
+/// Write a pending context menu action to a temp file that the running InnologyLock
 /// instance can pick up. This avoids the infinite-loop problem where spawning
 /// a new process would call the same handler again.
 pub fn dispatch_context_action(action: &str, path: &str) -> Result<String, String> {
@@ -144,7 +144,7 @@ pub fn dispatch_context_action(action: &str, path: &str) -> Result<String, Strin
 
     logger::log("MENU", &format!("Context menu {}: {}", action, path));
 
-    // Write action to a temp file in the vault dir — the running app polls this.
+    // Write action to a temp file in the vault dir â€” the running app polls this.
     let vault_dir = crate::vault::vault_dir();
     let _ = std::fs::create_dir_all(&vault_dir);
     let action_file = vault_dir.join("context_action.txt");
@@ -153,7 +153,7 @@ pub fn dispatch_context_action(action: &str, path: &str) -> Result<String, Strin
     writeln!(f, "{}\n{}", action, path)
         .map_err(|e| format!("Cannot write action file: {}", e))?;
 
-    // If OmniLock is not running, start it — it will read the action file on startup.
+    // If InnologyLock is not running, start it â€” it will read the action file on startup.
     // If it is already running, it will pick up the file on its next poll.
     let exe_path = std::env::current_exe()
         .map_err(|e| format!("Cannot get exe path: {}", e))?;
@@ -165,4 +165,4 @@ pub fn dispatch_context_action(action: &str, path: &str) -> Result<String, Strin
     Ok(format!("{} action dispatched for: {}", action, path))
 }
 
-// Legacy functions removed in v0.0.39 — the old handlers caused an infinite loop.
+// Legacy functions removed in v0.0.39 â€” the old handlers caused an infinite loop.

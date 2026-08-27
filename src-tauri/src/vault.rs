@@ -1,4 +1,4 @@
-use aes_gcm::{
+﻿use aes_gcm::{
     aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
 };
@@ -12,7 +12,7 @@ use crate::models::{EncryptedVault, VaultConfig};
 use serde::{Deserialize, Serialize};
 
 const HEADER_MAGIC: &[u8; 4] = b"OMNI";
-const VAULT_DIR: &str = "InnologyBD\\OmniLock";
+const VAULT_DIR: &str = "InnologyBD\\InnologyLock";
 const VAULT_FILE: &str = "vault.enc";
 const RECOVERY_FILE: &str = "vault.recovery";
 
@@ -112,7 +112,7 @@ pub fn decrypt_vault(password: &str) -> Result<VaultConfig, String> {
     }
 
     if encrypted.salt.is_empty() {
-        return Err("Vault missing salt — corrupted or incompatible format".to_string());
+        return Err("Vault missing salt â€” corrupted or incompatible format".to_string());
     }
 
     let key_material = hash_password(password, &encrypted.salt)?;
@@ -383,7 +383,7 @@ fn rekey_vault(old_password: &str, new_password: &str, answer: &str) -> Result<(
 
 pub fn derive_recovery_key_material(recovery_key: &str) -> Vec<u8> {
     let mut hasher = Sha256::new();
-    hasher.update(b"OMNILOCK-RECOVERY-KEY-DERIVE\0");
+    hasher.update(b"InnologyLock-RECOVERY-KEY-DERIVE\0");
     hasher.update(recovery_key.as_bytes());
     hasher.finalize().to_vec()
 }
@@ -496,7 +496,7 @@ mod tests {
         let mut key_material = vec![0u8; 32];
         getrandom::getrandom(&mut key_material).unwrap();
 
-        let plaintext = b"hello omnilock";
+        let plaintext = b"hello InnologyLock";
         let (ciphertext, nonce) = encrypt_bytes(plaintext, &key_material).unwrap();
         assert_ne!(ciphertext, plaintext);
 

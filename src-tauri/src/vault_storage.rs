@@ -1,7 +1,7 @@
-// Vault storage — private file storage inside the encrypted vault.
+﻿// Vault storage â€” private file storage inside the encrypted vault.
 //
 // Files are encrypted at rest with the vault's file_encryption_key (the same
-// key used for lock blobs) and stored under %APPDATA%\InnologyBD\OmniLock\storage\
+// key used for lock blobs) and stored under %APPDATA%\InnologyBD\InnologyLock\storage\
 // under random names, so nothing about the stored files is visible on disk.
 //
 // Stored blob layout (file "<id>.vaultfile"):
@@ -13,7 +13,7 @@
 //   [8]  original file size (u64 LE)
 //   [*]  AES-256-GCM ciphertext + 16-byte tag
 //
-// Manifest (%APPDATA%\InnologyBD\OmniLock\vault_files.enc) is itself AES-GCM
+// Manifest (%APPDATA%\InnologyBD\InnologyLock\vault_files.enc) is itself AES-GCM
 // encrypted with the same key so stored file names are never leaked in clear:
 //   [4]  magic "OVMF"
 //   [1]  version = 1
@@ -42,14 +42,14 @@ pub struct VaultFileInfo {
 
 fn storage_dir() -> PathBuf {
     let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
-    let dir = PathBuf::from(appdata).join("InnologyBD\\OmniLock\\storage");
+    let dir = PathBuf::from(appdata).join("InnologyBD\\InnologyLock\\storage");
     fs::create_dir_all(&dir).ok();
     dir
 }
 
 fn manifest_path() -> PathBuf {
     let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(appdata).join("InnologyBD\\OmniLock\\vault_files.enc")
+    PathBuf::from(appdata).join("InnologyBD\\InnologyLock\\vault_files.enc")
 }
 
 fn now_secs() -> u64 {
@@ -82,7 +82,7 @@ fn read_manifest(key: &[u8]) -> Result<Vec<VaultFileInfo>, String> {
     }
     let nonce: [u8; 12] = blob[5..17].try_into().map_err(|_| "Bad manifest nonce")?;
     let plaintext = file_locker::do_decrypt(&blob[17..], key, &nonce)
-        .map_err(|_| "Cannot decrypt file manifest — wrong key or corrupted vault")?;
+        .map_err(|_| "Cannot decrypt file manifest â€” wrong key or corrupted vault")?;
     serde_json::from_slice(&plaintext).map_err(|e| format!("Invalid manifest: {e}"))
 }
 
@@ -106,7 +106,7 @@ fn read_blob(id: &str, key: &[u8]) -> Result<(String, u64, Vec<u8>), String> {
     let blob = fs::read(&path).map_err(|e| format!("Stored file not found ({e})"))?;
     let min_len = 4 + 1 + 12 + 4 + 8;
     if blob.len() < min_len || &blob[..4] != BLOB_MAGIC {
-        return Err("Not a valid OmniLock stored file (bad magic)".to_string());
+        return Err("Not a valid InnologyLock stored file (bad magic)".to_string());
     }
     let nonce: [u8; 12] = blob[5..17].try_into().map_err(|_| "Bad nonce".to_string())?;
     let name_len = u32::from_le_bytes([blob[17], blob[18], blob[19], blob[20]]) as usize;
@@ -123,7 +123,7 @@ fn read_blob(id: &str, key: &[u8]) -> Result<(String, u64, Vec<u8>), String> {
     Ok((name, size, plaintext))
 }
 
-// ── public API ────────────────────────────────────────────────────────────────
+// â”€â”€ public API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Encrypt a file into vault storage and delete the original.
 /// Returns the stored file info. Refuses protected paths (vault dir, drive roots).
@@ -147,7 +147,7 @@ pub fn store_file(path: &str, key: &[u8]) -> Result<VaultFileInfo, String> {
     let id = id_bytes.iter().map(|b| format!("{b:02x}")).collect::<String>();
 
     write_blob(&id, &name, size, &data, key)?;
-    // The blob is on disk — only now remove the original.
+    // The blob is on disk â€” only now remove the original.
     fs::remove_file(p).map_err(|e| format!("Cannot remove original after encrypt: {e}"))?;
 
     let mut files = read_manifest(key)?;

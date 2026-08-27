@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import {
   QrCode, KeyRound, Copy, ArrowRight, CheckCircle2,
   AlertTriangle, Power, Activity, ShieldAlert, Download, Upload,
@@ -224,7 +224,7 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <SectionHeader
-        eyebrow="FR-AUTH · Argon2id + AES-256-GCM"
+        eyebrow="FR-AUTH Â· Argon2id + AES-256-GCM"
         title="Security & 2FA"
         subtitle="Zero-trust master credentials, RFC 6238 TOTP, and 3-tier recovery. Vault sealed with authenticated encryption."
       />
@@ -394,7 +394,7 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
             ))}
           </div>
           <div className="mt-4 pt-4 border-t border-[color:var(--border)] text-xs text-[color:var(--muted-foreground)]">
-            Vault stored at <code>%APPDATA%\InnologyBD\OmniLock\vault.enc</code>
+            Vault stored at <code>%APPDATA%\InnologyBD\InnologyLock\vault.enc</code>
           </div>
         </div>
 
@@ -407,7 +407,7 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
             </span>
           </div>
           <p className="text-xs text-[color:var(--muted-foreground)] mb-4">
-            When you lock your Windows screen (Win+L), OmniLock will automatically re-lock all temporarily unlocked files and folders.
+            When you lock your Windows screen (Win+L), InnologyLock will automatically re-lock all temporarily unlocked files and folders.
           </p>
           <button
             onClick={async () => {
@@ -482,7 +482,7 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
           )}
         </div>
         <p className="text-xs text-[color:var(--muted-foreground)] mb-4">
-          Store your recovery key on a USB pendrive. When plugged in, OmniLock can auto-unlock using the key. The key never touches your hard disk.
+          Store your recovery key on a USB pendrive. When plugged in, InnologyLock can auto-unlock using the key. The key never touches your hard disk.
         </p>
 
         {usbError && (
@@ -509,7 +509,7 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
                   if (key) {
                     setSuccess("USB key detected and verified! Recovery key can be read from this pendrive.");
                   } else {
-                    setUsbError("No OmniLock USB key detected. Make sure your enrolled pendrive is plugged in.");
+                    setUsbError("No InnologyLock USB key detected. Make sure your enrolled pendrive is plugged in.");
                   }
                 } catch (e: any) {
                   setUsbError("Test failed: " + e);
@@ -621,7 +621,7 @@ export function SecurityPage({ config, refresh }: { config: VaultConfigDto | nul
           <h3 className="font-semibold">Backup & Restore</h3>
         </div>
         <p className="text-xs text-[color:var(--muted-foreground)] mb-4">
-          Export your encrypted vault to a safe location. If you reinstall OmniLock, import the backup to restore all your settings, locked apps, folders, and recovery keys.
+          Export your encrypted vault to a safe location. If you reinstall InnologyLock, import the backup to restore all your settings, locked apps, folders, and recovery keys.
         </p>
         <div className="flex gap-3">
           <button onClick={async () => {

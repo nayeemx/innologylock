@@ -1,7 +1,7 @@
 // File and folder locking via AES-256-GCM encryption.
 //
 // When a file is locked it is encrypted in-place:
-//   original.txt  →  original.txt.omnilock   (encrypted blob)
+//   original.txt  â†’  original.txt.InnologyLock   (encrypted blob)
 //   original.txt  is deleted
 //
 // Encrypted blob layout:
@@ -25,7 +25,7 @@ use windows_sys::Win32::Security::*;
 use windows_sys::Win32::Security::Authorization::*;
 use windows_sys::Win32::System::Threading::*;
 
-// ── helpers ───────────────────────────────────────────────────────────────────
+// â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn to_wide(s: &str) -> Vec<u16> {
     use std::ffi::OsStr;
@@ -58,7 +58,7 @@ fn show_blob(path: &str) {
 
 /// Returns the path of the encrypted blob for a given original path.
 pub fn encrypted_path_for(path: &str) -> String {
-    format!("{}.omnilock", path)
+    format!("{}.InnologyLock", path)
 }
 
 /// True when the file is locked (encrypted blob exists, original gone).
@@ -67,7 +67,7 @@ pub fn is_file_locked(path: &str) -> bool {
     Path::new(&enc).exists() && !Path::new(path).exists()
 }
 
-// ── encryption helpers ────────────────────────────────────────────────────────
+// â”€â”€ encryption helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 pub fn do_encrypt(data: &[u8], key_material: &[u8]) -> Result<(Vec<u8>, [u8; 12]), String> {
     if key_material.len() != 32 {
@@ -90,7 +90,7 @@ pub fn do_decrypt(ciphertext: &[u8], key_material: &[u8], nonce_bytes: &[u8]) ->
     let cipher = Aes256Gcm::new(key);
     let nonce = Nonce::from_slice(nonce_bytes);
     cipher.decrypt(nonce, ciphertext)
-        .map_err(|_| "Decryption failed — wrong key or corrupted file".to_string())
+        .map_err(|_| "Decryption failed â€” wrong key or corrupted file".to_string())
 }
 
 fn write_blob(encrypted_path: &str, nonce: &[u8; 12], original_path: &str, ciphertext: &[u8]) -> Result<(), String> {
@@ -109,10 +109,10 @@ fn read_blob(encrypted_path: &str) -> Result<([u8; 12], String, Vec<u8>), String
     let blob = fs::read(encrypted_path).map_err(|e| format!("Cannot read encrypted file: {e}"))?;
     let min_len = 4 + 1 + 12 + 4;
     if blob.len() < min_len {
-        return Err("Not a valid OmniLock encrypted file (too short)".to_string());
+        return Err("Not a valid InnologyLock encrypted file (too short)".to_string());
     }
     if &blob[..4] != MAGIC {
-        return Err("Not an OmniLock encrypted file (bad magic)".to_string());
+        return Err("Not an InnologyLock encrypted file (bad magic)".to_string());
     }
     // version at [4], ignored for now
     let nonce: [u8; 12] = blob[5..17].try_into().map_err(|_| "Bad nonce".to_string())?;
@@ -127,9 +127,9 @@ fn read_blob(encrypted_path: &str) -> Result<([u8; 12], String, Vec<u8>), String
     Ok((nonce, original_path, ciphertext))
 }
 
-// ── public lock / unlock API ──────────────────────────────────────────────────
+// â”€â”€ public lock / unlock API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-/// Encrypt a single file in-place. Returns the path of the .omnilock file.
+/// Encrypt a single file in-place. Returns the path of the .InnologyLock file.
 /// The original file is deleted only after the encrypted blob is written.
 pub fn lock_file(path: &str, key_material: &[u8]) -> Result<String, String> {
     check_protected_path(path)?;
@@ -150,12 +150,12 @@ pub fn lock_file(path: &str, key_material: &[u8]) -> Result<String, String> {
 }
 
 /// Decrypt a locked file back to its original path. Returns the original path.
-/// Pass the ORIGINAL path (not the .omnilock path).
+/// Pass the ORIGINAL path (not the .InnologyLock path).
 pub fn unlock_file(path: &str, key_material: &[u8]) -> Result<String, String> {
     let enc_path = encrypted_path_for(path);
 
-    // Support both: caller passes original path or the .omnilock path
-    let blob_path = if Path::new(path).extension().map(|e| e == "omnilock").unwrap_or(false) && Path::new(path).exists() {
+    // Support both: caller passes original path or the .InnologyLock path
+    let blob_path = if Path::new(path).extension().map(|e| e == "InnologyLock").unwrap_or(false) && Path::new(path).exists() {
         path.to_string()
     } else if Path::new(&enc_path).exists() {
         enc_path.clone()
@@ -198,7 +198,7 @@ pub fn lock_folder(path: &str, key_material: &[u8]) -> Result<usize, String> {
     Ok(count)
 }
 
-/// Decrypt all .omnilock files inside a folder recursively.
+/// Decrypt all .InnologyLock files inside a folder recursively.
 /// Returns the number of files decrypted.
 pub fn unlock_folder(path: &str, key_material: &[u8]) -> Result<usize, String> {
     let dir = Path::new(path);
@@ -210,19 +210,19 @@ pub fn unlock_folder(path: &str, key_material: &[u8]) -> Result<usize, String> {
     Ok(count)
 }
 
-/// True when the folder contains at least one .omnilock file (i.e. is locked).
+/// True when the folder contains at least one .InnologyLock file (i.e. is locked).
 pub fn is_folder_locked(path: &str) -> bool {
-    Path::new(path).is_dir() && dir_has_omnilock(Path::new(path))
+    Path::new(path).is_dir() && dir_has_innology_lock(Path::new(path))
 }
 
-fn dir_has_omnilock(dir: &Path) -> bool {
+fn dir_has_innology_lock(dir: &Path) -> bool {
     if let Ok(entries) = fs::read_dir(dir) {
         for e in entries.flatten() {
             let p = e.path();
-            if p.extension().map(|x| x == "omnilock").unwrap_or(false) {
+            if p.extension().map(|x| x == "InnologyLock").unwrap_or(false) {
                 return true;
             }
-            if p.is_dir() && dir_has_omnilock(&p) {
+            if p.is_dir() && dir_has_innology_lock(&p) {
                 return true;
             }
         }
@@ -235,13 +235,13 @@ fn encrypt_dir_recursive(dir: &Path, key: &[u8]) -> Result<usize, String> {
     let entries = fs::read_dir(dir).map_err(|e| format!("Cannot read dir: {e}"))?;
     for entry in entries.flatten() {
         let p = entry.path();
-        // Never follow symlinks/junctions — they could point OUTSIDE the locked tree.
+        // Never follow symlinks/junctions â€” they could point OUTSIDE the locked tree.
         if p.symlink_metadata().map(|m| m.file_type().is_symlink()).unwrap_or(false) {
             continue;
         }
         let name = p.file_name().unwrap_or_default().to_string_lossy();
-        // Skip already-encrypted blobs and OmniLock's own files
-        if name.ends_with(".omnilock") || name == "desktop.ini" {
+        // Skip already-encrypted blobs and InnologyLock's own files
+        if name.ends_with(".InnologyLock") || name == "desktop.ini" {
             continue;
         }
         if p.is_dir() {
@@ -261,13 +261,13 @@ fn decrypt_dir_recursive(dir: &Path, key: &[u8]) -> Result<usize, String> {
     let entries = fs::read_dir(dir).map_err(|e| format!("Cannot read dir: {e}"))?;
     for entry in entries.flatten() {
         let p = entry.path();
-        // Never follow symlinks/junctions — they could point OUTSIDE the locked tree.
+        // Never follow symlinks/junctions â€” they could point OUTSIDE the locked tree.
         if p.symlink_metadata().map(|m| m.file_type().is_symlink()).unwrap_or(false) {
             continue;
         }
         if p.is_dir() {
             count += decrypt_dir_recursive(&p, key)?;
-        } else if p.extension().map(|x| x == "omnilock").unwrap_or(false) {
+        } else if p.extension().map(|x| x == "InnologyLock").unwrap_or(false) {
             let path_str = p.to_string_lossy().to_string();
             match unlock_file(&path_str, key) {
                 Ok(_) => count += 1,
@@ -280,22 +280,22 @@ fn decrypt_dir_recursive(dir: &Path, key: &[u8]) -> Result<usize, String> {
 
 /// verify_lock: returns true if the path (or its encrypted counterpart) is locked.
 pub fn verify_lock(path: &str) -> Result<bool, String> {
-    // Encryption-based lock: .omnilock file exists, original gone
+    // Encryption-based lock: .InnologyLock file exists, original gone
     if is_file_locked(path) {
         return Ok(true);
     }
-    // Folder lock: contains .omnilock files
+    // Folder lock: contains .InnologyLock files
     if Path::new(path).is_dir() {
         return Ok(is_folder_locked(path));
     }
-    // Caller passed the .omnilock path directly
-    if path.ends_with(".omnilock") && Path::new(path).exists() {
+    // Caller passed the .InnologyLock path directly
+    if path.ends_with(".InnologyLock") && Path::new(path).exists() {
         return Ok(true);
     }
     Ok(false)
 }
 
-// ── backup helpers (kept for restore functionality) ───────────────────────────
+// â”€â”€ backup helpers (kept for restore functionality) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 #[allow(dead_code)] // reserved: create_backup_before_lock was removed in the encryption rewrite
 fn backup_path_for(path: &str) -> Result<PathBuf, String> {
@@ -307,7 +307,7 @@ fn backup_path_for(path: &str) -> Result<PathBuf, String> {
         .unwrap_or(0);
     let backup_dir = PathBuf::from(appdata)
         .join("InnologyBD")
-        .join("OmniLock")
+        .join("InnologyLock")
         .join("backups")
         .join(&safe_name);
     fs::create_dir_all(&backup_dir).map_err(|e| format!("Cannot create backup dir: {e}"))?;
@@ -322,7 +322,7 @@ pub fn list_backups(path: &str) -> Result<Vec<(String, u64)>, String> {
     let safe_name = path.replace(|c: char| !c.is_alphanumeric() && c != '.' && c != '_', "_");
     let backup_dir = PathBuf::from(appdata)
         .join("InnologyBD")
-        .join("OmniLock")
+        .join("InnologyLock")
         .join("backups")
         .join(&safe_name);
     if !backup_dir.exists() {
@@ -355,10 +355,10 @@ pub fn restore_backup(backup_path: &str, target_path: &str) -> Result<(), String
     Ok(())
 }
 
-// ── critical-path guard ───────────────────────────────────────────────────────
+// â”€â”€ critical-path guard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /// Refuse to lock paths that would be catastrophic (drive roots, the vault
-/// directory — which contains the key that unlocks everything — and the app's
+/// directory â€” which contains the key that unlocks everything â€” and the app's
 /// own executable).
 pub fn check_protected_path(path: &str) -> Result<(), String> {
     let trimmed = path.trim_end_matches(['\\', '/']);
@@ -369,12 +369,12 @@ pub fn check_protected_path(path: &str) -> Result<(), String> {
              Lock drives via drive locking (NoDrives) instead."
         ));
     }
-    // Vault directory — locking it would encrypt the key itself
+    // Vault directory â€” locking it would encrypt the key itself
     if let Ok(appdata) = std::env::var("APPDATA") {
         let vault_dir = PathBuf::from(appdata).join("InnologyBD");
         if path.to_lowercase().starts_with(&vault_dir.to_string_lossy().to_lowercase()) {
             return Err(format!(
-                "Refusing to lock the OmniLock vault directory ({path}) — \
+                "Refusing to lock the InnologyLock vault directory ({path}) â€” \
                  this would make locked files unrecoverable."
             ));
         }
@@ -384,15 +384,15 @@ pub fn check_protected_path(path: &str) -> Result<(), String> {
         let exe_lower = exe.to_string_lossy().to_lowercase();
         let path_lower = path.to_lowercase();
         if path_lower == exe_lower
-            || path_lower == format!("{}.omnilock", exe_lower)
+            || path_lower == format!("{}.InnologyLock", exe_lower)
         {
-            return Err("Refusing to lock the OmniLock executable itself.".to_string());
+            return Err("Refusing to lock the InnologyLock executable itself.".to_string());
         }
     }
     Ok(())
 }
 
-// ── ACL recovery (fixes damage from old lock mechanism) ───────────────────────
+// â”€â”€ ACL recovery (fixes damage from old lock mechanism) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 unsafe fn enable_privilege(name: &str) -> Result<(), String> {
     let mut h_token: HANDLE = std::ptr::null_mut();
@@ -535,7 +535,7 @@ pub fn force_unlock(path: &str) -> Result<(), String> {
     }
 }
 
-// ── ACL damage scanner (for fixing old-format locks) ─────────────────────────
+// â”€â”€ ACL damage scanner (for fixing old-format locks) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 pub fn scan_acl_damage(root: &str) -> Vec<String> {
     let mut damaged: Vec<String> = Vec::new();

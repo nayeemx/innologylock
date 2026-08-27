@@ -1,4 +1,4 @@
-use aes_gcm::{
+﻿use aes_gcm::{
     aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
 };
@@ -8,8 +8,8 @@ use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::PathBuf;
 
-const KEY_FILENAME: &str = "omnilock.key";
-const KEY_MAGIC: &str = "OMNILOCK-USB-KEY-V2";
+const KEY_FILENAME: &str = "InnologyLock.key";
+const KEY_MAGIC: &str = "InnologyLock-USB-KEY-V2";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UsbKeyFile {
@@ -93,7 +93,7 @@ fn get_volume_serial(drive: &str) -> u32 {
 
 fn derive_key(material: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();
-    hasher.update(b"OMNILOCK-USB-KEY-SALT\0");
+    hasher.update(b"InnologyLock-USB-KEY-SALT\0");
     hasher.update(material);
     let result = hasher.finalize();
     let mut key = [0u8; 32];
@@ -257,14 +257,14 @@ pub fn detect_usb_key(expected_serial: Option<u32>) -> Option<(UsbDriveInfo, Str
 pub fn verify_key_on_drive(letter: &str) -> Result<String, String> {
     let key_path = PathBuf::from(format!("{}:\\{}", letter, KEY_FILENAME));
     if !key_path.exists() {
-        return Err(format!("No OmniLock key found on drive {}:", letter));
+        return Err(format!("No InnologyLock key found on drive {}:", letter));
     }
 
     let data = fs::read_to_string(&key_path).map_err(|e| e.to_string())?;
     let key_file: UsbKeyFile = serde_json::from_str(&data).map_err(|e| format!("Invalid key file: {}", e))?;
 
     if key_file.magic != KEY_MAGIC {
-        return Err("Not an OmniLock key file".to_string());
+        return Err("Not an InnologyLock key file".to_string());
     }
 
     // Machine-bound decryption

@@ -1,4 +1,4 @@
-# OmniLock - Security Specification
+﻿# InnologyLock - Security Specification
 
 **Document Version:** 2.2.0
 
@@ -9,13 +9,13 @@
 ### Vault Encryption
 - **Algorithm:** AES-256-GCM (authenticated encryption)
 - **Key Derivation:** Argon2id (m=65536, t=3, p=1, output=32 bytes)
-- **Key:** Argon2id(password, per-vault random salt) — NOT SHA-256(password)
+- **Key:** Argon2id(password, per-vault random salt) â€” NOT SHA-256(password)
 - **Nonce:** Random 96-bit nonce generated per encryption
 - **Header Magic:** `OMNI` (4 bytes) for format identification
 
 ### Recovery Data Encryption
 - **Algorithm:** AES-256-GCM
-- **Key:** SHA-256(security_answer_lowercased_trimmed) — used to encrypt/decrypt the master password
+- **Key:** SHA-256(security_answer_lowercased_trimmed) â€” used to encrypt/decrypt the master password
 - **Storage:** Separate file (`vault.recovery`), not inside the vault
 
 ### Password Verification
@@ -29,34 +29,34 @@
 - **Digits:** 6
 - **Period:** 30 seconds
 - **Tolerance:** 1 time-step (past and future)
-- **Secret Encoding:** Base32 (RFC 4648) — compatible with all major authenticator apps
+- **Secret Encoding:** Base32 (RFC 4648) â€” compatible with all major authenticator apps
 
 ---
 
 ## 2. System Protection
 
-### File/Folder Locking (v0.0.35 — AES-256-GCM encryption, replaced ACL)
+### File/Folder Locking (v0.0.35 â€” AES-256-GCM encryption, replaced ACL)
 - **Method:** Authenticated encryption in place (AES-256-GCM, `aes-gcm` crate). No NTFS ACL modification.
-- **Key:** `VaultConfig.file_encryption_key` — 32 random bytes inside the encrypted vault, never rotated on password change.
-- **Lock:** `original` → `original.omnilock` (`OLCK` magic + version + 96-bit nonce + original path + ciphertext + 16-byte tag), original deleted. Blob is hidden (`FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM`) so it's invisible in Explorer by default.
+- **Key:** `VaultConfig.file_encryption_key` â€” 32 random bytes inside the encrypted vault, never rotated on password change.
+- **Lock:** `original` â†’ `original.InnologyLock` (`OLCK` magic + version + 96-bit nonce + original path + ciphertext + 16-byte tag), original deleted. Blob is hidden (`FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM`) so it's invisible in Explorer by default.
 - **Folder:** recursive encrypt; the folder stays browsable.
 - **Unlock:** decrypt via the embedded original path; blob deleted.
-- **Security property:** contents are unreadable without the vault key. If the vault is lost, locked files are unrecoverable — keep a vault backup.
+- **Security property:** contents are unreadable without the vault key. If the vault is lost, locked files are unrecoverable â€” keep a vault backup.
 - **Legacy ACL damage:** `scan_acl_damage` / `bulk_recover_acl` / `force_unlock` repair files broken by the pre-0.0.35 ACL lock (owner=SYSTEM). They also purge the service's persisted re-lock list.
 - **Boot sweep (v0.0.36):** on app startup the service's persisted legacy ACL `locked_items` are purged (`get_locked_items()` + `notify_force_remove_locked_item`), so the legacy daemon can never re-apply owner=SYSTEM locks at boot.
-- **Stale-unlock reconciliation (v0.0.36):** after login `cmd_verify_locked_state` compares the vault's `locked_files`/`locked_folders` against disk; entries with no `.omnilock` blob (temp-unlocked, app exited before re-lock) are surfaced for the user to **re-lock** (`cmd_relock_entries`) or **keep unlocked** (`cmd_forget_unlocked_entries`). No silent re-encryption — folders in active use are never re-encrypted without consent.
+- **Stale-unlock reconciliation (v0.0.36):** after login `cmd_verify_locked_state` compares the vault's `locked_files`/`locked_folders` against disk; entries with no `.InnologyLock` blob (temp-unlocked, app exited before re-lock) are surfaced for the user to **re-lock** (`cmd_relock_entries`) or **keep unlocked** (`cmd_forget_unlocked_entries`). No silent re-encryption â€” folders in active use are never re-encrypted without consent.
 
 ### Vault Storage (v0.0.36)
-- **Purpose:** private encrypted storage of user files (`%APPDATA%\InnologyBD\OmniLock\storage\<id>.vaultfile`).
+- **Purpose:** private encrypted storage of user files (`%APPDATA%\InnologyBD\InnologyLock\storage\<id>.vaultfile`).
 - **Blob format:** `OVLF` magic | version 1 | 96-bit nonce | name_len (u32 LE) | original name (UTF-8) | size (u64 LE) | AES-256-GCM ciphertext + 16-byte tag. Key = the vault's `file_encryption_key`.
-- **Manifest:** `vault_files.enc` — AES-256-GCM encrypted (`OVMF` magic + nonce + ciphertext JSON `[{id,name,size,added_at}]`) so **stored file names never leak on disk**.
+- **Manifest:** `vault_files.enc` â€” AES-256-GCM encrypted (`OVMF` magic + nonce + ciphertext JSON `[{id,name,size,added_at}]`) so **stored file names never leak on disk**.
 - **Guarantees:** original file deleted only after the blob is written; extraction refuses to overwrite existing files and verifies size; blob + manifest entry removed only after a successful extraction write; symlinks and protected paths refused.
-- **Recovery trade-off:** if the vault is lost, stored files are unrecoverable — same as locked files. Keep a vault backup.
+- **Recovery trade-off:** if the vault is lost, stored files are unrecoverable â€” same as locked files. Keep a vault backup.
 
 ### Drive Locking
-- **Visibility:** `NoDrives` registry value hides drive in Windows Explorer (bitmask: bit 0 = A:, bit 1 = B:, …)
-- **Lock (v0.0.35):** NoDrives hide only. Whole-drive recursive encryption was removed as a data hazard; direct path access still works — see AGENTS.md for the open design question.
-- **Legacy:** pre-0.0.35 used DACL on the drive root (owner=SYSTEM) — destructive; no longer sent to the service
+- **Visibility:** `NoDrives` registry value hides drive in Windows Explorer (bitmask: bit 0 = A:, bit 1 = B:, â€¦)
+- **Lock (v0.0.35):** NoDrives hide only. Whole-drive recursive encryption was removed as a data hazard; direct path access still works â€” see AGENTS.md for the open design question.
+- **Legacy:** pre-0.0.35 used DACL on the drive root (owner=SYSTEM) â€” destructive; no longer sent to the service
 
 ### System Presets
 | Preset | Registry Key | Value |
@@ -73,12 +73,12 @@
 ## 3. Password Reset (2FA Wipe on Reset)
 
 1. User answers security question
-2. Answer hash used as key to decrypt `vault.recovery` → recovers old master password
-3. Old master password decrypts `vault.enc` → full vault config loaded
+2. Answer hash used as key to decrypt `vault.recovery` â†’ recovers old master password
+3. Old master password decrypts `vault.enc` â†’ full vault config loaded
 4. Vault is re-encrypted with new Argon2id(password, new_salt) key
 5. 2FA is **disabled** (totp_enabled = false, totp_secret cleared)
 6. Recovery data is re-encrypted with same answer hash but new password
-7. User must log in with new password — no 2FA until re-enabled
+7. User must log in with new password â€” no 2FA until re-enabled
 
 ---
 
@@ -95,14 +95,14 @@
 
 | Data | Path | Encrypted? |
 |:---|:---|:---|
-| Vault | `%APPDATA%\InnologyBD\OmniLock\vault.enc` | Yes (AES-256-GCM) |
-| Recovery | `%APPDATA%\InnologyBD\OmniLock\vault.recovery` | Yes (AES-256-GCM) |
-| Meta | `%APPDATA%\InnologyBD\OmniLock\vault.meta` | No (plaintext) |
-| Locked item | `path.omnilock` next to original | Yes (AES-256-GCM, `OLCK` blob) |
-| Locked items index | `%APPDATA%\InnologyBD\OmniLock\locked_items.json` | No (paths + display names only) |
-| Vault storage blobs | `%APPDATA%\InnologyBD\OmniLock\storage\*.vaultfile` | Yes (AES-256-GCM, `OVLF` blob) |
-| Vault storage manifest | `%APPDATA%\InnologyBD\OmniLock\vault_files.enc` | Yes (AES-256-GCM, `OVMF`) |
+| Vault | `%APPDATA%\InnologyBD\InnologyLock\vault.enc` | Yes (AES-256-GCM) |
+| Recovery | `%APPDATA%\InnologyBD\InnologyLock\vault.recovery` | Yes (AES-256-GCM) |
+| Meta | `%APPDATA%\InnologyBD\InnologyLock\vault.meta` | No (plaintext) |
+| Locked item | `path.InnologyLock` next to original | Yes (AES-256-GCM, `OLCK` blob) |
+| Locked items index | `%APPDATA%\InnologyBD\InnologyLock\locked_items.json` | No (paths + display names only) |
+| Vault storage blobs | `%APPDATA%\InnologyBD\InnologyLock\storage\*.vaultfile` | Yes (AES-256-GCM, `OVLF` blob) |
+| Vault storage manifest | `%APPDATA%\InnologyBD\InnologyLock\vault_files.enc` | Yes (AES-256-GCM, `OVMF`) |
 
 ---
 
-*End of SECURITY.md (OmniLock v2.2.0)*
+*End of SECURITY.md (InnologyLock v2.2.0)*

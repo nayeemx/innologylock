@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
@@ -19,7 +19,7 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasErr
       return (
         <div className="flex items-center justify-center h-screen" style={{background: "var(--background)"}}>
           <div className="text-center p-8">
-            <img src="/icon.png" alt="OmniLock" className="w-12 h-12 mx-auto mb-4 rounded-xl object-cover" />
+            <img src="/icon.png" alt="InnologyLock" className="w-12 h-12 mx-auto mb-4 rounded-xl object-cover" />
             <h2 className="text-xl font-semibold mb-2">Something went wrong</h2>
             <p className="text-sm text-[color:var(--muted-foreground)] mb-4">An unexpected error occurred.</p>
             <button onClick={() => window.location.reload()}

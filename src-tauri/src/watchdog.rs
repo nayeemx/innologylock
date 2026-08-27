@@ -1,11 +1,11 @@
-use std::process::Command;
+﻿use std::process::Command;
 use std::sync::OnceLock;
 use std::time::Instant;
 use sysinfo::System;
 
 use crate::models::{WatchdogStatusDto, SystemInfoDto};
 
-const MAIN_NAME: &str = "omnilock.exe";
+const MAIN_NAME: &str = "InnologyLock.exe";
 
 static START_TIME: OnceLock<Instant> = OnceLock::new();
 
@@ -87,6 +87,6 @@ pub fn get_system_info() -> SystemInfoDto {
 pub fn is_guard_process() -> bool {
     std::env::current_exe()
         .ok()
-        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().eq_ignore_ascii_case("omnilock-guard.exe")))
+        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().eq_ignore_ascii_case("InnologyLock-guard.exe")))
         .unwrap_or(false)
 }

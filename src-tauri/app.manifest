@@ -6,7 +6,7 @@
     name="com.innologybd.omnilock"
     type="win32"
   />
-  <description>OmniLock - Windows 11 App, Folder and File Locker by InnologyBD</description>
+  <description>OmniLock - Windows 10/11 App, Folder and File Locker by InnologyBD</description>
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
     <security>
       <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">

@@ -37,7 +37,7 @@ pub static UNLOCK_TARGET: OnceLock<Mutex<Option<UnlockTarget>>> = OnceLock::new(
 /// When the widget loses focus we re-apply the lock on this target.
 pub static WIDGET_TEMP_UNLOCKED: OnceLock<Mutex<Option<UnlockTarget>>> = OnceLock::new();
 
-/// Active file encryption key — set at login, cleared on lock.
+/// Active file encryption key â€” set at login, cleared on lock.
 /// Used by background threads (process_guard, auto_lock) that can't access AppState.
 static ACTIVE_FILE_KEY: OnceLock<Mutex<Option<Vec<u8>>>> = OnceLock::new();
 
@@ -52,7 +52,7 @@ pub fn get_active_file_key() -> Option<Vec<u8>> {
         .lock().ok().and_then(|g| g.clone())
 }
 
-/// Path of a .omnilock file passed on the command line, waiting for the user to log in.
+/// Path of a .InnologyLock file passed on the command line, waiting for the user to log in.
 pub static PENDING_OPEN_LOCKED: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 
 /// After widget unlock of an app, the exe path to auto-launch before re-locking.
@@ -134,7 +134,7 @@ fn save_locked_items_summary(config: &VaultConfig) {
     }
     let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
     let path = std::path::PathBuf::from(appdata)
-        .join("InnologyBD\\OmniLock\\locked_items.json");
+        .join("InnologyBD\\InnologyLock\\locked_items.json");
     let _ = std::fs::create_dir_all(path.parent().unwrap());
     if let Ok(json) = serde_json::to_string(&targets) {
         let _ = std::fs::write(path, json);
@@ -222,13 +222,13 @@ fn cmd_unlock_session(
     }));
     drive_locker::start_usb_removal_monitor();
 
-    // If a .omnilock file was passed on the command line, show its widget now
+    // If a .InnologyLock file was passed on the command line, show its widget now
     let pending = PENDING_OPEN_LOCKED.get_or_init(|| Mutex::new(None))
         .lock().ok().and_then(|mut g| g.take());
     if let Some(enc_path) = pending {
         let display = std::path::Path::new(&enc_path)
             .file_name()
-            .map(|n| n.to_string_lossy().trim_end_matches(".omnilock").to_string())
+            .map(|n| n.to_string_lossy().trim_end_matches(".InnologyLock").to_string())
             .unwrap_or_else(|| enc_path.clone());
         let target = UnlockTarget {
             target_type: "file".to_string(),
@@ -314,7 +314,7 @@ fn cmd_add_locked_drive(
             return Err(e);
         }
     }
-    // No service ACL notification — the service's drive-root ACL lock is the old
+    // No service ACL notification â€” the service's drive-root ACL lock is the old
     // destructive approach. Drive locking is now NoDrives visibility + encryption.
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
@@ -361,113 +361,116 @@ fn cmd_remove_locked_drive(
 }
 
 #[tauri::command]
-fn cmd_add_locked_file(
+async fn cmd_add_locked_file(
     state: State<'_, AppState>,
     path: String,
 ) -> Result<String, String> {
     require_valid_session(&state)?;
     let key = require_file_key(&state)?;
+    let password = { let g = state.password.lock().map_err(|e| e.to_string())?; g.clone().ok_or("No password in session")? };
     logger::log("LOCK", &format!("lock_file start: {}", path));
-    let _enc_path = match file_locker::lock_file(&path, &key) {
-        Ok(p) => { logger::log("LOCK", &format!("lock_file ok: {} -> {}", path, p)); p }
-        Err(e) => { logger::log("LOCK", &format!("lock_file failed: {} err={}", path, e)); return Err(e); }
-    };
+    let enc_path = path.clone();
+    let enc_key = key;
+    tokio::task::spawn_blocking(move || file_locker::lock_file(&enc_path, &enc_key))
+        .await.map_err(|e| format!("Task join error: {e}"))?
+        .map_err(|e| { logger::log("LOCK", &format!("lock_file failed: {} err={}", path, e)); e })?;
     let locked = file_locker::is_file_locked(&path);
     cloud_status::set_lock_state(&path, true);
-    // NOTE: no service ACL notification here. The old service applies destructive
-    // ACL locks (owner=SYSTEM + restricted DACL) and persists them for re-application
-    // at boot. Encryption-based locks are managed entirely by the app now.
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
-    // Store the original path in vault so we can find the encrypted version
     if !config.locked_files.contains(&path) {
         config.locked_files.push(path.clone());
     }
-    let password_guard = state.password.lock().map_err(|e| e.to_string())?;
-    let password = password_guard.as_ref().ok_or("No password in session")?;
-    vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
+    vault::encrypt_vault(config, &password).map_err(|e| e.to_string())?;
     save_locked_items_summary(config);
+    logger::log("LOCK", &format!("lock_file ok: {}", path));
     if locked { Ok("locked".to_string()) } else { Ok("locked_unverified".to_string()) }
 }
 
 #[tauri::command]
-fn cmd_remove_locked_file(
+async fn cmd_remove_locked_file(
     state: State<'_, AppState>,
     path: String,
 ) -> Result<String, String> {
     require_valid_session(&state)?;
     let key = require_file_key(&state)?;
+    let password = { let g = state.password.lock().map_err(|e| e.to_string())?; g.clone().ok_or("No password in session")? };
     logger::log("UNLOCK", &format!("unlock_file start: {}", path));
-    match file_locker::unlock_file(&path, &key) {
-        Ok(p) => logger::log("UNLOCK", &format!("unlock_file ok: {}", p)),
-        Err(e) => { logger::log("UNLOCK", &format!("unlock_file failed: {} err={}", path, e)); return Err(e); }
-    }
+    let ul_path = path.clone();
+    let ul_key = key;
+    tokio::task::spawn_blocking(move || file_locker::unlock_file(&ul_path, &ul_key))
+        .await.map_err(|e| format!("Task join error: {e}"))?
+        .map_err(|e| { logger::log("UNLOCK", &format!("unlock_file failed: {} err={}", path, e)); e })?;
     let still_locked = file_locker::is_file_locked(&path);
     cloud_status::set_lock_state(&path, false);
-    let password_guard = state.password.lock().map_err(|e| e.to_string())?;
-    let password = password_guard.as_ref().ok_or("No password in session")?;
-    service_client::notify_unlock_item(&path, password);
+    service_client::notify_unlock_item(&path, &password);
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
     config.locked_files.retain(|f| f != &path);
-    vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
+    vault::encrypt_vault(config, &password).map_err(|e| e.to_string())?;
     save_locked_items_summary(config);
+    logger::log("UNLOCK", &format!("unlock_file ok: {}", path));
     if !still_locked { Ok("unlocked".to_string()) } else { Ok("unlock_failed".to_string()) }
 }
 
 #[tauri::command]
-fn cmd_add_locked_folder(
+async fn cmd_add_locked_folder(
     state: State<'_, AppState>,
     path: String,
 ) -> Result<String, String> {
     require_valid_session(&state)?;
     let key = require_file_key(&state)?;
+    let password = { let g = state.password.lock().map_err(|e| e.to_string())?; g.clone().ok_or("No password in session")? };
     logger::log("LOCK", &format!("lock_folder start: {}", path));
-    match file_locker::lock_folder(&path, &key) {
+    let lock_path = path.clone();
+    let lock_key = key;
+    let count = tokio::task::spawn_blocking(move || file_locker::lock_folder(&lock_path, &lock_key))
+        .await.map_err(|e| format!("Task join error: {e}"))?;
+    match count {
         Ok(n) => logger::log("LOCK", &format!("lock_folder ok: {} files encrypted in {}", n, path)),
         Err(e) => { logger::log("LOCK", &format!("lock_folder failed: {} err={}", path, e)); return Err(e); }
     }
     let locked = file_locker::is_folder_locked(&path);
     cloud_status::set_lock_state(&path, true);
-    // No service ACL notification — see cmd_add_locked_file. The service would
-    // restrict the folder's own DACL, re-introducing the old lock damage.
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
     if !config.locked_folders.contains(&path) {
         config.locked_folders.push(path.clone());
     }
-    let password_guard = state.password.lock().map_err(|e| e.to_string())?;
-    let password = password_guard.as_ref().ok_or("No password in session")?;
-    vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
+    vault::encrypt_vault(config, &password).map_err(|e| e.to_string())?;
     process_guard::update_locked_folders(config.locked_folders.clone());
     save_locked_items_summary(config);
     if locked { Ok("locked".to_string()) } else { Ok("locked_unverified".to_string()) }
 }
 
 #[tauri::command]
-fn cmd_remove_locked_folder(
+async fn cmd_remove_locked_folder(
     state: State<'_, AppState>,
     path: String,
 ) -> Result<String, String> {
     require_valid_session(&state)?;
     let key = require_file_key(&state)?;
+    let password = { let g = state.password.lock().map_err(|e| e.to_string())?; g.clone().ok_or("No password in session")? };
     logger::log("UNLOCK", &format!("unlock_folder start: {}", path));
-    match file_locker::unlock_folder(&path, &key) {
+    let ul_path = path.clone();
+    let ul_key = key;
+    let count = tokio::task::spawn_blocking(move || file_locker::unlock_folder(&ul_path, &ul_key))
+        .await.map_err(|e| format!("Task join error: {e}"))?;
+    match count {
         Ok(n) => logger::log("UNLOCK", &format!("unlock_folder ok: {} files decrypted in {}", n, path)),
         Err(e) => { logger::log("UNLOCK", &format!("unlock_folder failed: {} err={}", path, e)); return Err(e); }
     }
     let still_locked = file_locker::is_folder_locked(&path);
     cloud_status::set_lock_state(&path, false);
-    let password_guard = state.password.lock().map_err(|e| e.to_string())?;
-    let password = password_guard.as_ref().ok_or("No password in session")?;
-    service_client::notify_unlock_item(&path, password);
+    service_client::notify_unlock_item(&path, &password);
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
     config.locked_folders.retain(|f| f != &path);
-    vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
+    vault::encrypt_vault(config, &password).map_err(|e| e.to_string())?;
     process_guard::update_locked_folders(config.locked_folders.clone());
     process_guard::notify_folder_locked(&path);
     save_locked_items_summary(config);
+    logger::log("UNLOCK", &format!("unlock_folder ok: {}", path));
     if !still_locked { Ok("unlocked".to_string()) } else { Ok("unlock_failed".to_string()) }
 }
 
@@ -477,7 +480,7 @@ async fn cmd_scan_acl_damage(path: String) -> Result<Vec<String>, String> {
     if !std::path::Path::new(&path).exists() {
         return Err(format!("Path does not exist: {}", path));
     }
-    // Recursive walk can take a while on large trees — run off the UI thread.
+    // Recursive walk can take a while on large trees â€” run off the UI thread.
     let scan_path = path.clone();
     let damaged = tokio::task::spawn_blocking(move || file_locker::scan_acl_damage(&scan_path))
         .await
@@ -489,7 +492,7 @@ async fn cmd_scan_acl_damage(path: String) -> Result<Vec<String>, String> {
 #[tauri::command]
 async fn cmd_bulk_recover_acl(paths: Vec<String>) -> Vec<(String, String)> {
     logger::log("BULK_RECOVER", &format!("bulk_recover_acl: {} items", paths.len()));
-    // force_unlock takes ownership + resets DACL — can be slow per item; run off the UI thread.
+    // force_unlock takes ownership + resets DACL â€” can be slow per item; run off the UI thread.
     let fix_paths = paths.clone();
     let results = tokio::task::spawn_blocking(move || file_locker::bulk_recover_acl(&fix_paths))
         .await
@@ -505,7 +508,7 @@ async fn cmd_bulk_recover_acl(paths: Vec<String>) -> Vec<(String, String)> {
 }
 
 #[tauri::command]
-fn cmd_rescue_unlock(
+async fn cmd_rescue_unlock(
     state: State<'_, AppState>,
     path: String,
 ) -> Result<String, String> {
@@ -529,55 +532,44 @@ fn cmd_rescue_unlock(
         return Ok("not_locked".to_string());
     }
 
-    match file_locker::unlock_file(&path, &key) {
-        Ok(p) => logger::log("RESCUE", &format!("rescue_unlock unlock ok: {}", p)),
-        Err(e) => {
-            logger::log("RESCUE", &format!("rescue_unlock unlock failed: {} err={}", path, e));
-            return Err(e);
-        }
-    }
+    let r_path = path.clone();
+    let r_key = key;
+    tokio::task::spawn_blocking(move || file_locker::unlock_file(&r_path, &r_key))
+        .await.map_err(|e| format!("Task join error: {e}"))?
+        .map_err(|e| { logger::log("RESCUE", &format!("rescue_unlock unlock failed: {} err={}", path, e)); e })?;
+    logger::log("RESCUE", &format!("rescue_unlock unlock ok: {}", path));
     let still_locked = file_locker::verify_lock(&path).unwrap_or(false);
     logger::log("RESCUE", &format!("rescue_unlock still_locked={} path={}", still_locked, path));
     if still_locked {
         return Ok("failed".to_string());
     }
-    // Notify service to stop re-applying the lock
     service_client::notify_force_remove_locked_item(&path);
     logger::log("RESCUE", &format!("rescue_unlock notified service: {}", path));
     Ok("rescued".to_string())
 }
 
 #[tauri::command]
-fn cmd_recover_acl(path: String) -> Result<String, String> {
+async fn cmd_recover_acl(path: String) -> Result<String, String> {
     logger::log("RECOVER", &format!("recover_acl start: {}", path));
-    match file_locker::safe_recover_acl(&path) {
-        Ok(()) => {
-            logger::log("RECOVER", &format!("recover_acl ok: {}", path));
-            service_client::notify_force_remove_locked_item(&path);
-            Ok("recovered".to_string())
-        }
-        Err(e) => {
-            logger::log("RECOVER", &format!("recover_acl failed: {} err={}", path, e));
-            Err(e)
-        }
-    }
+    let p = path.clone();
+    tokio::task::spawn_blocking(move || file_locker::safe_recover_acl(&p))
+        .await.map_err(|e| format!("Task join error: {e}"))?
+        .map_err(|e| { logger::log("RECOVER", &format!("recover_acl failed: {} err={}", path, e)); e })?;
+    logger::log("RECOVER", &format!("recover_acl ok: {}", path));
+    service_client::notify_force_remove_locked_item(&path);
+    Ok("recovered".to_string())
 }
 
 #[tauri::command]
-fn cmd_force_unlock(path: String) -> Result<String, String> {
+async fn cmd_force_unlock(path: String) -> Result<String, String> {
     logger::log("FORCE_UNLOCK", &format!("force_unlock start: {}", path));
-    match file_locker::force_unlock(&path) {
-        Ok(()) => {
-            logger::log("FORCE_UNLOCK", &format!("force_unlock ok: {}", path));
-            // Purge from the service's persisted re-lock list so it isn't re-locked at boot.
-            service_client::notify_force_remove_locked_item(&path);
-            Ok("force_unlocked".to_string())
-        }
-        Err(e) => {
-            logger::log("FORCE_UNLOCK", &format!("force_unlock failed: {} err={}", path, e));
-            Err(e)
-        }
-    }
+    let p = path.clone();
+    tokio::task::spawn_blocking(move || file_locker::force_unlock(&p))
+        .await.map_err(|e| format!("Task join error: {e}"))?
+        .map_err(|e| { logger::log("FORCE_UNLOCK", &format!("force_unlock failed: {} err={}", path, e)); e })?;
+    logger::log("FORCE_UNLOCK", &format!("force_unlock ok: {}", path));
+    service_client::notify_force_remove_locked_item(&path);
+    Ok("force_unlocked".to_string())
 }
 
 /// Items marked locked in the vault but no longer locked on disk.
@@ -624,23 +616,33 @@ fn cmd_verify_locked_state(state: State<'_, AppState>) -> Result<Vec<UnlockTarge
 /// Re-encrypt entries the user chose to re-lock after a stale-unlock prompt.
 /// Returns (path, status) per entry.
 #[tauri::command]
-fn cmd_relock_entries(
+async fn cmd_relock_entries(
     state: State<'_, AppState>,
     paths: Vec<String>,
 ) -> Result<Vec<(String, String)>, String> {
     require_valid_session(&state)?;
     let key = require_file_key(&state)?;
+    let password = { let g = state.password.lock().map_err(|e| e.to_string())?; g.clone().ok_or("No password in session")? };
     let mut results: Vec<(String, String)> = Vec::new();
-    for path in &paths {
-        let status = if file_locker::is_file_locked(path) || file_locker::is_folder_locked(path) {
+    let entries: Vec<(String, bool)> = paths.iter().map(|p| {
+        (p.clone(), file_locker::is_file_locked(p) || file_locker::is_folder_locked(p))
+    }).collect();
+    for (path, already_locked) in &entries {
+        let status = if *already_locked {
             "already_locked".to_string()
         } else if std::path::Path::new(path).is_dir() {
-            match file_locker::lock_folder(path, &key) {
+            let p = path.clone();
+            let k = key.clone();
+            match tokio::task::spawn_blocking(move || file_locker::lock_folder(&p, &k))
+                .await.map_err(|e| format!("Task join error: {e}"))? {
                 Ok(_) => "ok".to_string(),
                 Err(e) => e,
             }
         } else {
-            match file_locker::lock_file(path, &key) {
+            let p = path.clone();
+            let k = key.clone();
+            match tokio::task::spawn_blocking(move || file_locker::lock_file(&p, &k))
+                .await.map_err(|e| format!("Task join error: {e}"))? {
                 Ok(_) => "ok".to_string(),
                 Err(e) => e,
             }
@@ -658,9 +660,7 @@ fn cmd_relock_entries(
             }
         }
     }
-    let password_guard = state.password.lock().map_err(|e| e.to_string())?;
-    let password = password_guard.as_ref().ok_or("No password in session")?;
-    vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
+    vault::encrypt_vault(config, &password).map_err(|e| e.to_string())?;
     process_guard::update_locked_folders(config.locked_folders.clone());
     save_locked_items_summary(config);
     Ok(results)
@@ -703,41 +703,45 @@ fn cmd_restore_backup(backup_path: String, target_path: String) -> Result<String
 }
 
 #[tauri::command]
-fn cmd_toggle_locked_app(
+async fn cmd_toggle_locked_app(
     state: State<'_, AppState>,
     name: String,
     enabled: bool,
 ) -> Result<(), String> {
     require_valid_session(&state)?;
     let key = require_file_key(&state)?;
+    let password = { let g = state.password.lock().map_err(|e| e.to_string())?; g.clone().ok_or("No password in session")? };
+    let app_path = {
+        let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
+        let config = config_guard.as_mut().ok_or("Session not unlocked")?;
+        let app = config.locked_apps.iter_mut().find(|a| a.name == name)
+            .ok_or_else(|| format!("App not found: {}", name))?;
+        app.enabled = enabled;
+        app.path.clone()
+    };
+    if enabled {
+        let p = app_path.clone();
+        let k = key.clone();
+        let _ = tokio::task::spawn_blocking(move || file_locker::lock_file(&p, &k))
+            .await.map_err(|e| format!("Task join error: {e}"))??;
+    } else {
+        let p = app_path.clone();
+        let k = key.clone();
+        let _ = tokio::task::spawn_blocking(move || file_locker::unlock_file(&p, &k))
+            .await.map_err(|e| format!("Task join error: {e}"))??;
+        service_client::notify_unlock_item(&app_path, &password);
+    }
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
-    if let Some(app) = config.locked_apps.iter_mut().find(|a| a.name == name) {
-        app.enabled = enabled;
-        let app_path = app.path.clone();
-        if enabled {
-            let _ = file_locker::lock_file(&app_path, &key);
-            // No service ACL notification — see cmd_add_locked_file.
-        } else {
-            let _ = file_locker::unlock_file(&app_path, &key);
-            let password_guard = state.password.lock().map_err(|e| e.to_string())?;
-            let password = password_guard.as_ref().ok_or("No password in session")?;
-            service_client::notify_unlock_item(&app_path, password);
-        }
-    } else {
-        return Err(format!("App not found: {}", name));
-    }
     let apps = config.locked_apps.clone();
-    let password_guard = state.password.lock().map_err(|e| e.to_string())?;
-    let password = password_guard.as_ref().ok_or("No password in session")?;
-    vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
+    vault::encrypt_vault(config, &password).map_err(|e| e.to_string())?;
     process_guard::update_locked_apps(apps);
     save_locked_items_summary(config);
     Ok(())
 }
 
 #[tauri::command]
-fn cmd_add_locked_app(
+async fn cmd_add_locked_app(
     state: State<'_, AppState>,
     name: String,
     path: String,
@@ -745,8 +749,11 @@ fn cmd_add_locked_app(
 ) -> Result<(), String> {
     require_valid_session(&state)?;
     let key = require_file_key(&state)?;
-    let _ = file_locker::lock_file(&path, &key);
-    // No service ACL notification — see cmd_add_locked_file.
+    let password = { let g = state.password.lock().map_err(|e| e.to_string())?; g.clone().ok_or("No password in session")? };
+    let app_path = path.clone();
+    let app_key = key.clone();
+    let _ = tokio::task::spawn_blocking(move || file_locker::lock_file(&app_path, &app_key))
+        .await.map_err(|e| format!("Task join error: {e}"))?;
     let sha256 = process_guard::compute_file_sha256(&path).unwrap_or_default();
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
@@ -754,34 +761,37 @@ fn cmd_add_locked_app(
         config.locked_apps.push(LockedApp { name, path, sha256, enabled: true });
     }
     let apps = config.locked_apps.clone();
-    let password_guard = state.password.lock().map_err(|e| e.to_string())?;
-    let password = password_guard.as_ref().ok_or("No password in session")?;
-    vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
+    vault::encrypt_vault(config, &password).map_err(|e| e.to_string())?;
     process_guard::update_locked_apps(apps);
     save_locked_items_summary(config);
     Ok(())
 }
 
 #[tauri::command]
-fn cmd_remove_locked_app(
+async fn cmd_remove_locked_app(
     state: State<'_, AppState>,
     name: String,
 ) -> Result<(), String> {
     require_valid_session(&state)?;
     let key = require_file_key(&state)?;
+    let password = { let g = state.password.lock().map_err(|e| e.to_string())?; g.clone().ok_or("No password in session")? };
+    let app_path = {
+        let config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
+        let config = config_guard.as_ref().ok_or("Session not unlocked")?;
+        config.locked_apps.iter().find(|a| a.name == name).map(|a| a.path.clone())
+    };
+    if let Some(app_path) = app_path {
+        let p = app_path.clone();
+        let k = key.clone();
+        let _ = tokio::task::spawn_blocking(move || file_locker::unlock_file(&p, &k))
+            .await.map_err(|e| format!("Task join error: {e}"))??;
+        service_client::notify_unlock_item(&app_path, &password);
+    }
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
-    if let Some(app) = config.locked_apps.iter().find(|a| a.name == name) {
-        let _ = file_locker::unlock_file(&app.path, &key);
-        let password_guard = state.password.lock().map_err(|e| e.to_string())?;
-        let password = password_guard.as_ref().ok_or("No password in session")?;
-        service_client::notify_unlock_item(&app.path, password);
-    }
     config.locked_apps.retain(|a| a.name != name);
     let apps = config.locked_apps.clone();
-    let password_guard = state.password.lock().map_err(|e| e.to_string())?;
-    let password = password_guard.as_ref().ok_or("No password in session")?;
-    vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
+    vault::encrypt_vault(config, &password).map_err(|e| e.to_string())?;
     process_guard::update_locked_apps(apps);
     save_locked_items_summary(config);
     Ok(())
@@ -846,17 +856,18 @@ fn cmd_get_user_profile() -> Result<String, String> {
 }
 
 #[tauri::command]
-fn cmd_vault_store_file(
+async fn cmd_vault_store_file(
     state: State<'_, AppState>,
     path: String,
 ) -> Result<vault_storage::VaultFileInfo, String> {
     require_valid_session(&state)?;
     let key = require_file_key(&state)?;
     logger::log("VAULT_STORE", &format!("store_file start: {path}"));
-    let info = match vault_storage::store_file(&path, &key) {
-        Ok(i) => { logger::log("VAULT_STORE", &format!("store_file ok: {} -> {}", path, i.name)); i }
-        Err(e) => { logger::log("VAULT_STORE", &format!("store_file failed: {} err={}", path, e)); return Err(e); }
-    };
+    let p = path.clone();
+    let info = tokio::task::spawn_blocking(move || vault_storage::store_file(&p, &key))
+        .await.map_err(|e| format!("Task join error: {e}"))?
+        .map_err(|e| { logger::log("VAULT_STORE", &format!("store_file failed: {} err={}", path, e)); e })?;
+    logger::log("VAULT_STORE", &format!("store_file ok: {} -> {}", path, info.name));
     Ok(info)
 }
 
@@ -870,7 +881,7 @@ fn cmd_vault_list_files(
 }
 
 #[tauri::command]
-fn cmd_vault_extract_file(
+async fn cmd_vault_extract_file(
     state: State<'_, AppState>,
     id: String,
     dest_dir: String,
@@ -878,21 +889,26 @@ fn cmd_vault_extract_file(
     require_valid_session(&state)?;
     let key = require_file_key(&state)?;
     logger::log("VAULT_STORE", &format!("extract_file start: {id} -> {dest_dir}"));
-    let dest = match vault_storage::extract_file(&id, &dest_dir, &key) {
-        Ok(d) => { logger::log("VAULT_STORE", &format!("extract_file ok: {id} -> {d}")); d }
-        Err(e) => { logger::log("VAULT_STORE", &format!("extract_file failed: {id} err={}", e)); return Err(e); }
-    };
+    let eid = id.clone();
+    let edir = dest_dir.clone();
+    let dest = tokio::task::spawn_blocking(move || vault_storage::extract_file(&eid, &edir, &key))
+        .await.map_err(|e| format!("Task join error: {e}"))?
+        .map_err(|e| { logger::log("VAULT_STORE", &format!("extract_file failed: {id} err={}", e)); e })?;
+    logger::log("VAULT_STORE", &format!("extract_file ok: {id} -> {dest}"));
     Ok(dest)
 }
 
 #[tauri::command]
-fn cmd_vault_delete_file(
+async fn cmd_vault_delete_file(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<(), String> {
     require_valid_session(&state)?;
     let key = require_file_key(&state)?;
-    vault_storage::delete_file(&id, &key)
+    let did = id.clone();
+    tokio::task::spawn_blocking(move || vault_storage::delete_file(&did, &key))
+        .await.map_err(|e| format!("Task join error: {e}"))?
+        .map_err(|e| { logger::log("VAULT_STORE", &format!("delete_file failed: {id} err={}", e)); e })
 }
 
 #[tauri::command]
@@ -937,82 +953,85 @@ fn cmd_set_lock_on_screen_lock(
     Ok(())
 }
 
-/// Scan for all .omnilock blobs on disk (for the Hidden Items page).
+/// Scan for all .InnologyLock blobs on disk (for the Hidden Items page).
 #[tauri::command]
-fn cmd_list_hidden_blobs() -> Result<Vec<String>, String> {
-    let vault_dir = crate::vault::vault_dir();
-    let storage_dir = vault_dir.join("storage");
-    // Also scan common user directories for .omnilock files
-    let mut blobs = Vec::new();
-    let home = std::env::var("USERPROFILE").unwrap_or_default();
-    let scan_dirs = vec![
-        format!("{}\\Desktop", home),
-        format!("{}\\Documents", home),
-        format!("{}\\Downloads", home),
-        format!("{}\\Pictures", home),
-        format!("{}\\Music", home),
-        format!("{}\\Videos", home),
-    ];
-    for dir in scan_dirs {
-        if let Ok(entries) = std::fs::read_dir(&dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().map_or(false, |e| e == "omnilock") {
-                    if let Some(s) = path.to_str() {
-                        blobs.push(s.to_string());
+async fn cmd_list_hidden_blobs() -> Result<Vec<String>, String> {
+    tokio::task::spawn_blocking(|| {
+        let vault_dir = crate::vault::vault_dir();
+        let storage_dir = vault_dir.join("storage");
+        let mut blobs = Vec::new();
+        let home = std::env::var("USERPROFILE").unwrap_or_default();
+        let scan_dirs = vec![
+            format!("{}\\Desktop", home),
+            format!("{}\\Documents", home),
+            format!("{}\\Downloads", home),
+            format!("{}\\Pictures", home),
+            format!("{}\\Music", home),
+            format!("{}\\Videos", home),
+        ];
+        for dir in scan_dirs {
+            if let Ok(entries) = std::fs::read_dir(&dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().map_or(false, |e| e == "InnologyLock") {
+                        if let Some(s) = path.to_str() {
+                            blobs.push(s.to_string());
+                        }
                     }
                 }
             }
         }
-    }
-    // Also check the vault storage dir
-    if storage_dir.exists() {
-        if let Ok(entries) = std::fs::read_dir(&storage_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().map_or(false, |e| e == "vaultfile") {
-                    if let Some(s) = path.to_str() {
-                        blobs.push(s.to_string());
+        if storage_dir.exists() {
+            if let Ok(entries) = std::fs::read_dir(&storage_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().map_or(false, |e| e == "vaultfile") {
+                        if let Some(s) = path.to_str() {
+                            blobs.push(s.to_string());
+                        }
                     }
                 }
             }
         }
-    }
-    Ok(blobs)
+        Ok(blobs)
+    }).await.map_err(|e| format!("Task join error: {e}"))?
 }
 
 /// Lock a file or folder from the context menu (called from frontend after context-action event).
 #[tauri::command]
-fn cmd_context_menu_lock(
+async fn cmd_context_menu_lock(
     state: State<'_, AppState>,
     path: String,
 ) -> Result<String, String> {
     require_valid_session(&state)?;
     let key = require_file_key(&state)?;
+    let password = { let g = state.password.lock().map_err(|e| e.to_string())?; g.clone().ok_or("No password in session")? };
     let p = std::path::Path::new(&path);
     if p.is_dir() {
-        let n = file_locker::lock_folder(&path, &key).map_err(|e| e.to_string())?;
+        let lp = path.clone();
+        let lk = key;
+        let n = tokio::task::spawn_blocking(move || file_locker::lock_folder(&lp, &lk))
+            .await.map_err(|e| format!("Task join error: {e}"))?.map_err(|e| e.to_string())?;
         let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
         let config = config_guard.as_mut().ok_or("Session not unlocked")?;
         if !config.locked_folders.contains(&path) {
             config.locked_folders.push(path.clone());
         }
-        let password_guard = state.password.lock().map_err(|e| e.to_string())?;
-        let password = password_guard.as_ref().ok_or("No password in session")?;
-        vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
+        vault::encrypt_vault(config, &password).map_err(|e| e.to_string())?;
         process_guard::update_locked_folders(config.locked_folders.clone());
         save_locked_items_summary(config);
         Ok(format!("locked {} files in {}", n, path))
     } else {
-        let enc = file_locker::lock_file(&path, &key).map_err(|e| e.to_string())?;
+        let lp = path.clone();
+        let lk = key;
+        let enc = tokio::task::spawn_blocking(move || file_locker::lock_file(&lp, &lk))
+            .await.map_err(|e| format!("Task join error: {e}"))?.map_err(|e| e.to_string())?;
         let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
         let config = config_guard.as_mut().ok_or("Session not unlocked")?;
         if !config.locked_files.contains(&path) {
             config.locked_files.push(path.clone());
         }
-        let password_guard = state.password.lock().map_err(|e| e.to_string())?;
-        let password = password_guard.as_ref().ok_or("No password in session")?;
-        vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
+        vault::encrypt_vault(config, &password).map_err(|e| e.to_string())?;
         save_locked_items_summary(config);
         Ok(format!("locked {} -> {}", path, enc))
     }
@@ -1020,32 +1039,35 @@ fn cmd_context_menu_lock(
 
 /// Unlock a file or folder from the context menu.
 #[tauri::command]
-fn cmd_context_menu_unlock(
+async fn cmd_context_menu_unlock(
     state: State<'_, AppState>,
     path: String,
 ) -> Result<String, String> {
     require_valid_session(&state)?;
     let key = require_file_key(&state)?;
+    let password = { let g = state.password.lock().map_err(|e| e.to_string())?; g.clone().ok_or("No password in session")? };
     let p = std::path::Path::new(&path);
     if p.is_dir() {
-        file_locker::unlock_folder(&path, &key).map_err(|e| e.to_string())?;
+        let up = path.clone();
+        let uk = key;
+        tokio::task::spawn_blocking(move || file_locker::unlock_folder(&up, &uk))
+            .await.map_err(|e| format!("Task join error: {e}"))?.map_err(|e| e.to_string())?;
         let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
         let config = config_guard.as_mut().ok_or("Session not unlocked")?;
         config.locked_folders.retain(|f| f != &path);
-        let password_guard = state.password.lock().map_err(|e| e.to_string())?;
-        let password = password_guard.as_ref().ok_or("No password in session")?;
-        vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
+        vault::encrypt_vault(config, &password).map_err(|e| e.to_string())?;
         process_guard::update_locked_folders(config.locked_folders.clone());
         save_locked_items_summary(config);
         Ok(format!("unlocked folder: {}", path))
     } else {
-        file_locker::unlock_file(&path, &key).map_err(|e| e.to_string())?;
+        let up = path.clone();
+        let uk = key;
+        tokio::task::spawn_blocking(move || file_locker::unlock_file(&up, &uk))
+            .await.map_err(|e| format!("Task join error: {e}"))?.map_err(|e| e.to_string())?;
         let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
         let config = config_guard.as_mut().ok_or("Session not unlocked")?;
         config.locked_files.retain(|f| f != &path);
-        let password_guard = state.password.lock().map_err(|e| e.to_string())?;
-        let password = password_guard.as_ref().ok_or("No password in session")?;
-        vault::encrypt_vault(config, password).map_err(|e| e.to_string())?;
+        vault::encrypt_vault(config, &password).map_err(|e| e.to_string())?;
         save_locked_items_summary(config);
         Ok(format!("unlocked file: {}", path))
     }
@@ -1127,7 +1149,7 @@ fn cmd_detect_usb_key() -> Result<Option<String>, String> {
 #[tauri::command]
 fn cmd_recover_with_usb_key(new_password: String) -> Result<(), String> {
     let (_drive, recovery_key) = usb_key::detect_usb_key(None)
-        .ok_or("No OmniLock USB key detected. Insert your enrolled pendrive.")?;
+        .ok_or("No InnologyLock USB key detected. Insert your enrolled pendrive.")?;
     vault::reset_password_with_key(&new_password, &recovery_key)
 }
 
@@ -1207,7 +1229,7 @@ fn cmd_widget_unlock(
     }
     let file_key = config.file_encryption_key.clone();
 
-    // Temporarily lift the restriction — vault config unchanged, item stays locked there.
+    // Temporarily lift the restriction â€” vault config unchanged, item stays locked there.
     match target.target_type.as_str() {
         "file" => {
             file_locker::unlock_file(&target.target_id, &file_key)?;
@@ -1363,7 +1385,7 @@ async fn cmd_widget_unlock_biometric(
 fn cmd_widget_list_locked() -> Result<Vec<UnlockTarget>, String> {
     let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
     let summary_path = std::path::PathBuf::from(appdata)
-        .join("InnologyBD\\OmniLock\\locked_items.json");
+        .join("InnologyBD\\InnologyLock\\locked_items.json");
     
     if !summary_path.exists() {
         return Ok(Vec::new());
@@ -1477,76 +1499,118 @@ fn cmd_github_disconnect() -> Result<(), String> {
 }
 
 #[tauri::command]
-fn cmd_backup_vault(dest_dir: String) -> Result<String, String> {
-    let dir = vault::vault_dir();
-    let dest = std::path::PathBuf::from(&dest_dir);
-    std::fs::create_dir_all(&dest).map_err(|e| format!("Cannot create backup folder: {}", e))?;
-
-    let mut files_backed_up = Vec::new();
-    let files_to_backup = ["vault.enc", "vault.recovery"];
-
-    for fname in &files_to_backup {
-        let src = dir.join(fname);
-        if src.exists() {
-            let dst = dest.join(fname);
-            std::fs::copy(&src, &dst).map_err(|e| format!("Failed to copy {}: {}", fname, e))?;
-            files_backed_up.push(fname.to_string());
+async fn cmd_backup_vault(dest_dir: String) -> Result<String, String> {
+    let dd = dest_dir.clone();
+    tokio::task::spawn_blocking(move || {
+        let dir = vault::vault_dir();
+        let dest = std::path::PathBuf::from(&dd);
+        std::fs::create_dir_all(&dest).map_err(|e| format!("Cannot create backup folder: {}", e))?;
+        let mut files_backed_up = Vec::new();
+        let files_to_backup = ["vault.enc", "vault.recovery"];
+        for fname in &files_to_backup {
+            let src = dir.join(fname);
+            if src.exists() {
+                let dst = dest.join(fname);
+                std::fs::copy(&src, &dst).map_err(|e| format!("Failed to copy {}: {}", fname, e))?;
+                files_backed_up.push(fname.to_string());
+            }
         }
-    }
-
-    let meta_src = dir.join("vault.meta");
-    if meta_src.exists() {
-        let meta_dst = dest.join("vault.meta");
-        std::fs::copy(&meta_src, &meta_dst).map_err(|e| format!("Failed to copy vault.meta: {}", e))?;
-        files_backed_up.push("vault.meta".to_string());
-    }
-
-    let items_src = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string())
-        + "\\InnologyBD\\OmniLock\\locked_items.json";
-    let items_path = std::path::PathBuf::from(&items_src);
-    if items_path.exists() {
-        let items_dst = dest.join("locked_items.json");
-        std::fs::copy(&items_path, &items_dst).map_err(|e| format!("Failed to copy locked_items.json: {}", e))?;
-        files_backed_up.push("locked_items.json".to_string());
-    }
-
-    Ok(format!("Backed up {} files to: {}", files_backed_up.len(), dest_dir))
+        let meta_src = dir.join("vault.meta");
+        if meta_src.exists() {
+            let meta_dst = dest.join("vault.meta");
+            std::fs::copy(&meta_src, &meta_dst).map_err(|e| format!("Failed to copy vault.meta: {}", e))?;
+            files_backed_up.push("vault.meta".to_string());
+        }
+        let items_src = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string())
+            + "\\InnologyBD\\InnologyLock\\locked_items.json";
+        let items_path = std::path::PathBuf::from(&items_src);
+        if items_path.exists() {
+            let items_dst = dest.join("locked_items.json");
+            std::fs::copy(&items_path, &items_dst).map_err(|e| format!("Failed to copy locked_items.json: {}", e))?;
+            files_backed_up.push("locked_items.json".to_string());
+        }
+        let manifest_src = dir.join("vault_files.enc");
+        if manifest_src.exists() {
+            let manifest_dst = dest.join("vault_files.enc");
+            std::fs::copy(&manifest_src, &manifest_dst).map_err(|e| format!("Failed to copy vault_files.enc: {}", e))?;
+            files_backed_up.push("vault_files.enc".to_string());
+        }
+        let storage_src = dir.join("storage");
+        if storage_src.exists() {
+            let storage_dest = dest.join("storage");
+            std::fs::create_dir_all(&storage_dest).map_err(|e| format!("Cannot create storage backup folder: {}", e))?;
+            if let Ok(entries) = std::fs::read_dir(&storage_src) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().and_then(|e| e.to_str()) == Some("vaultfile") {
+                        if let Some(fname) = path.file_name() {
+                            let dst = storage_dest.join(fname);
+                            std::fs::copy(&path, &dst).map_err(|e| format!("Failed to copy {}: {}", fname.to_string_lossy(), e))?;
+                            files_backed_up.push(format!("storage/{}", fname.to_string_lossy()));
+                        }
+                    }
+                }
+            }
+        }
+        Ok(format!("Backed up {} files to: {}", files_backed_up.len(), dd))
+    }).await.map_err(|e| format!("Task join error: {e}"))?
 }
 
 #[tauri::command]
-fn cmd_restore_vault(src_dir: String) -> Result<String, String> {
-    let src = std::path::PathBuf::from(&src_dir);
-    if !src.exists() {
-        return Err("Source folder does not exist".to_string());
-    }
-
-    let vault_dir = vault::vault_dir();
-    let mut files_restored = Vec::new();
-    let files_to_restore = ["vault.enc", "vault.recovery", "vault.meta"];
-
-    for fname in &files_to_restore {
-        let src_file = src.join(fname);
-        if src_file.exists() {
-            let dst = vault_dir.join(fname);
-            std::fs::copy(&src_file, &dst).map_err(|e| format!("Failed to copy {}: {}", fname, e))?;
-            files_restored.push(fname.to_string());
+async fn cmd_restore_vault(src_dir: String) -> Result<String, String> {
+    let sd = src_dir.clone();
+    tokio::task::spawn_blocking(move || {
+        let src = std::path::PathBuf::from(&sd);
+        if !src.exists() {
+            return Err("Source folder does not exist".to_string());
         }
-    }
-
-    let items_dst = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string())
-        + "\\InnologyBD\\OmniLock\\locked_items.json";
-    let items_src = src.join("locked_items.json");
-    if items_src.exists() {
-        std::fs::create_dir_all(std::path::PathBuf::from(&items_dst).parent().unwrap()).ok();
-        std::fs::copy(&items_src, &items_dst).map_err(|e| format!("Failed to copy locked_items.json: {}", e))?;
-        files_restored.push("locked_items.json".to_string());
-    }
-
-    if files_restored.is_empty() {
-        return Err("No backup files found in the selected folder".to_string());
-    }
-
-    Ok(format!("Restored {} files. Please restart OmniLock to apply.", files_restored.len()))
+        let vault_dir = vault::vault_dir();
+        let mut files_restored = Vec::new();
+        let files_to_restore = ["vault.enc", "vault.recovery", "vault.meta"];
+        for fname in &files_to_restore {
+            let src_file = src.join(fname);
+            if src_file.exists() {
+                let dst = vault_dir.join(fname);
+                std::fs::copy(&src_file, &dst).map_err(|e| format!("Failed to copy {}: {}", fname, e))?;
+                files_restored.push(fname.to_string());
+            }
+        }
+        let items_dst = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string())
+            + "\\InnologyBD\\InnologyLock\\locked_items.json";
+        let items_src = src.join("locked_items.json");
+        if items_src.exists() {
+            std::fs::create_dir_all(std::path::PathBuf::from(&items_dst).parent().unwrap()).ok();
+            std::fs::copy(&items_src, &items_dst).map_err(|e| format!("Failed to copy locked_items.json: {}", e))?;
+            files_restored.push("locked_items.json".to_string());
+        }
+        let manifest_src = src.join("vault_files.enc");
+        if manifest_src.exists() {
+            let manifest_dst = vault_dir.join("vault_files.enc");
+            std::fs::copy(&manifest_src, &manifest_dst).map_err(|e| format!("Failed to copy vault_files.enc: {}", e))?;
+            files_restored.push("vault_files.enc".to_string());
+        }
+        let storage_src = src.join("storage");
+        if storage_src.exists() {
+            let storage_dst = vault_dir.join("storage");
+            std::fs::create_dir_all(&storage_dst).map_err(|e| format!("Cannot create storage folder: {}", e))?;
+            if let Ok(entries) = std::fs::read_dir(&storage_src) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().and_then(|e| e.to_str()) == Some("vaultfile") {
+                        if let Some(fname) = path.file_name() {
+                            let dst = storage_dst.join(fname);
+                            std::fs::copy(&path, &dst).map_err(|e| format!("Failed to copy {}: {}", fname.to_string_lossy(), e))?;
+                            files_restored.push(format!("storage/{}", fname.to_string_lossy()));
+                        }
+                    }
+                }
+            }
+        }
+        if files_restored.is_empty() {
+            return Err("No backup files found in the selected folder".to_string());
+        }
+        Ok(format!("Restored {} files. Please restart InnologyLock to apply.", files_restored.len()))
+    }).await.map_err(|e| format!("Task join error: {e}"))?
 }
 
 #[tauri::command]
@@ -1694,7 +1758,7 @@ fn cmd_toggle_biometric(state: State<'_, AppState>, enabled: bool, password: Opt
 #[tauri::command]
 async fn cmd_biometric_login(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     logger::log("BIOMETRIC", "biometric_login start");
-    let verified = biometric::authenticate_biometric("Verify identity to unlock OmniLock".to_string()).await?;
+    let verified = biometric::authenticate_biometric("Verify identity to unlock InnologyLock".to_string()).await?;
     if !verified {
         return Err("Fingerprint verification failed".to_string());
     }
@@ -1971,7 +2035,7 @@ pub fn run() {
             use tauri::tray::{TrayIconBuilder, MouseButton, MouseButtonState, TrayIconEvent};
             use tauri::menu::{Menu, MenuItem};
 
-            let show_item = match MenuItem::with_id(app, "show", "Show OmniLock", true, None::<&str>) {
+            let show_item = match MenuItem::with_id(app, "show", "Show InnologyLock", true, None::<&str>) {
                 Ok(item) => item,
                 Err(e) => { logger::log("SETUP", &format!("menu item error: {}", e)); return Ok(()); }
             };
@@ -1986,7 +2050,7 @@ pub fn run() {
 
             let icon = app.default_window_icon().cloned();
             let tray_builder = TrayIconBuilder::new()
-                .tooltip("OmniLock - Enterprise Desktop Security")
+                .tooltip("InnologyLock - Enterprise Desktop Security")
                 .menu(&menu);
 
             let tray_builder = if let Some(ic) = &icon {
@@ -2050,9 +2114,9 @@ pub fn run() {
                 let exe_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf()));
                 let search_paths = exe_dir.iter().flat_map(|dir| {
                     vec![
-                        dir.join("omnilock-svc.exe"),
-                        dir.join("resources").join("omnilock-svc.exe"),
-                        dir.join("_resources").join("omnilock-svc.exe"),
+                        dir.join("InnologyLock-svc.exe"),
+                        dir.join("resources").join("InnologyLock-svc.exe"),
+                        dir.join("_resources").join("InnologyLock-svc.exe"),
                     ]
                 });
                 let svc_path = search_paths.filter(|p| p.exists()).next();
@@ -2066,7 +2130,7 @@ pub fn run() {
                         Err(e) => logger::log("SERVICE", &format!("failed to start service: {}", e)),
                     }
                 } else {
-                    logger::log("SERVICE", "omnilock-svc.exe not found, skipping service start");
+                    logger::log("SERVICE", "InnologyLock-svc.exe not found, skipping service start");
                 }
             } else {
                 logger::log("SERVICE", "service already running");
@@ -2096,9 +2160,9 @@ pub fn run() {
             panic_hotkey::start_hotkey_listener();
             watchdog::start_watchdog();
 
-            // Register .omnilock file association so double-clicking a locked file opens the unlock widget
+            // Register .InnologyLock file association so double-clicking a locked file opens the unlock widget
             if let Err(e) = shell_context::register_extension_only() {
-                logger::log("SETUP", &format!("register_omnilock_extension failed: {e}"));
+                logger::log("SETUP", &format!("register_innology_lock_extension failed: {e}"));
             }
 
             // Handle --open-locked <path> argument: store the path so the unlock
@@ -2134,8 +2198,8 @@ pub fn run() {
             }
 
             // Start a background thread that polls for context menu actions every 2 seconds.
-            // This handles the case where OmniLock is already running when the user
-            // right-clicks in Explorer → "Lock/Unlock with OmniLock".
+            // This handles the case where InnologyLock is already running when the user
+            // right-clicks in Explorer â†’ "Lock/Unlock with InnologyLock".
             {
                 let app_handle_for_poll = app.handle().clone();
                 std::thread::spawn(move || {
@@ -2233,5 +2297,5 @@ pub fn run() {
             }
         })
         .run(tauri::generate_context!())
-        .expect("error while running OmniLock");
+        .expect("error while running InnologyLock");
 }

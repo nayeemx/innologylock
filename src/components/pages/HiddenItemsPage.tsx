@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { EyeOff, Folder, FileLock2, RefreshCw, Loader2, Search } from "lucide-react";
 import { listHiddenBlobs } from "../../lib/tauri-bridge";
 import { SectionHeader } from "../shared/SectionHeader";
@@ -42,7 +42,7 @@ export function HiddenItemsPage() {
       <SectionHeader
         eyebrow="v0.0.39"
         title="Hidden Items"
-        subtitle="Encrypted .omnilock blobs invisible in Explorer. Only visible here and when 'Show hidden files' is enabled in Windows."
+        subtitle="Encrypted .InnologyLock blobs invisible in Explorer. Only visible here and when 'Show hidden files' is enabled in Windows."
       />
 
       {error && (
@@ -81,7 +81,7 @@ export function HiddenItemsPage() {
         <div className="divide-y divide-surface-border">
           {filtered.map(blob => {
             const isVaultFile = blob.endsWith(".vaultfile");
-            const isOmniLock = blob.endsWith(".omnilock");
+            const isInnologyLock = blob.endsWith(".InnologyLock");
             return (
               <div key={blob} className="px-5 py-4 flex items-center gap-4">
                 <div className="w-10 h-10 rounded-lg grid place-items-center bg-surface border border-surface-border">

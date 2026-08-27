@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import {
   ShieldCheck, Fingerprint, Activity,
   Lock, Eye, EyeOff, ArrowRight, CheckCircle2, HelpCircle, KeyRound,
@@ -372,9 +372,9 @@ export function LoginScreen({ totpEnabled, biometricEnabled, onUnlock }: { totpE
         <div className="absolute inset-0 opacity-60"
              style={{ background: "radial-gradient(ellipse at 30% 20%, oklch(0.35 0.18 210 / 0.5), transparent 60%), radial-gradient(ellipse at 70% 80%, oklch(0.35 0.22 295 / 0.45), transparent 60%)" }} />
         <div className="relative flex items-center gap-3">
-          <img src="/icon.png" alt="OmniLock" className="w-11 h-11 rounded-xl object-cover glow-cyan" />
+          <img src="/icon.png" alt="InnologyLock" className="w-11 h-11 rounded-xl object-cover glow-cyan" />
           <div>
-            <div className="text-lg font-semibold">OmniLock</div>
+            <div className="text-lg font-semibold">InnologyLock</div>
             <div className="text-[11px] uppercase tracking-widest text-[color:var(--muted-foreground)]">by InnologyBD</div>
           </div>
         </div>
@@ -388,7 +388,7 @@ export function LoginScreen({ totpEnabled, biometricEnabled, onUnlock }: { totpE
           </p>
           <div className="flex flex-col gap-3 pt-2">
             {[
-              { icon: ShieldCheck, text: "SHA-256 binary hashing — rename bypass impossible" },
+              { icon: ShieldCheck, text: "SHA-256 binary hashing â€” rename bypass impossible" },
               { icon: Fingerprint, text: "Two-factor enforced on every unlock" },
               { icon: Activity, text: "Guardian daemon with self-healing revival" },
             ].map(({ icon: Icon, text }) => (
@@ -403,22 +403,22 @@ export function LoginScreen({ totpEnabled, biometricEnabled, onUnlock }: { totpE
           </div>
         </div>
         <div className="relative text-xs text-[color:var(--muted-foreground)]">
-          © 2026 InnologyBD · All systems nominal
+          Â© 2026 InnologyBD Â· All systems nominal
         </div>
       </div>
 
       <div className="flex items-center justify-center p-6 sm:p-12">
         <div className="w-full max-w-md">
           <div className="lg:hidden flex items-center gap-3 mb-8">
-            <img src="/icon.png" alt="OmniLock" className="w-10 h-10 rounded-xl object-cover" />
-            <div className="text-lg font-semibold">OmniLock</div>
+            <img src="/icon.png" alt="InnologyLock" className="w-10 h-10 rounded-xl object-cover" />
+            <div className="text-lg font-semibold">InnologyLock</div>
           </div>
 
           {!resetMode && !resetSuccess ? (
             <>
               <div className="mb-8">
                 <div className="text-[11px] uppercase tracking-widest text-[color:var(--primary)] mb-2">Welcome back</div>
-                <h2 className="text-3xl font-semibold tracking-tight">Sign in to OmniLock</h2>
+                <h2 className="text-3xl font-semibold tracking-tight">Sign in to InnologyLock</h2>
                 <p className="text-sm text-[color:var(--muted-foreground)] mt-2">Enter your master credentials to unlock the vault.</p>
               </div>
 
@@ -431,7 +431,7 @@ export function LoginScreen({ totpEnabled, biometricEnabled, onUnlock }: { totpE
               <form onSubmit={handleSubmit} className="glass rounded-2xl p-6 space-y-4">
                 <Field label="Master password" icon={KeyRound}>
                   <input type={showPw ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)}
-                         placeholder="••••••••••••" autoFocus
+                         placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" autoFocus
                          className="flex-1 bg-transparent outline-none text-sm placeholder:text-[color:var(--muted-foreground)]" />
                   <button type="button" onClick={() => setShowPw(!showPw)} className="text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]">
                     {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -520,7 +520,7 @@ export function LoginScreen({ totpEnabled, biometricEnabled, onUnlock }: { totpE
               )}
 
               <div className="mt-6 text-center text-[11px] text-[color:var(--muted-foreground)]">
-                Protected by Argon2id · AES-256-GCM · TOTP RFC 6238
+                Protected by Argon2id Â· AES-256-GCM Â· TOTP RFC 6238
               </div>
             </>
           ) : (

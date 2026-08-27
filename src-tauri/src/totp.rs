@@ -1,4 +1,4 @@
-use hmac::{Hmac, Mac};
+﻿use hmac::{Hmac, Mac};
 use sha1::Sha1;
 use totp_rs::{Algorithm, Secret, TOTP};
 
@@ -25,7 +25,7 @@ pub fn create_totp(b32_secret: &str) -> Result<TOTP, String> {
         1,
         secret_bytes,
         Some("InnologyBD".to_string()),
-        "OmniLock".to_string(),
+        "InnologyLock".to_string(),
     )
     .map_err(|e| e.to_string())
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+﻿import { useState, useEffect, useCallback } from "react";
 import { Github, ArrowRight, Loader2, ShieldAlert } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -188,8 +188,8 @@ export default function App() {
     return (
       <div className="flex items-center justify-center h-screen" style={{ background: "var(--background)" }}>
         <div className="text-center">
-          <img src="/icon.png" alt="OmniLock" className="w-12 h-12 mx-auto mb-4 rounded-xl object-cover glow-cyan" />
-          <div className="text-sm text-[color:var(--muted-foreground)] animate-pulse">Loading OmniLock...</div>
+          <img src="/icon.png" alt="InnologyLock" className="w-12 h-12 mx-auto mb-4 rounded-xl object-cover glow-cyan" />
+          <div className="text-sm text-[color:var(--muted-foreground)] animate-pulse">Loading InnologyLock...</div>
         </div>
       </div>
     );
@@ -203,9 +203,9 @@ export default function App() {
         <div className="min-h-screen flex items-center justify-center p-6" style={{ background: "var(--background)" }}>
           <div className="w-full max-w-md">
             <div className="flex items-center gap-3 mb-8">
-              <img src="/icon.png" alt="OmniLock" className="w-11 h-11 rounded-xl object-cover glow-cyan" />
+              <img src="/icon.png" alt="InnologyLock" className="w-11 h-11 rounded-xl object-cover glow-cyan" />
               <div>
-                <div className="text-lg font-semibold tracking-tight">OmniLock</div>
+                <div className="text-lg font-semibold tracking-tight">InnologyLock</div>
                 <div className="text-[11px] text-[color:var(--muted-foreground)] tracking-wider uppercase">by InnologyBD</div>
               </div>
             </div>
@@ -270,7 +270,7 @@ export default function App() {
             </button>
 
             <div className="mt-6 text-center text-[11px] text-[color:var(--muted-foreground)]">
-              Uses GitHub Device Flow. No password shared with OmniLock.
+              Uses GitHub Device Flow. No password shared with InnologyLock.
             </div>
           </div>
         </div>
@@ -289,9 +289,9 @@ export default function App() {
       <div className="min-h-screen flex items-center justify-center p-6" style={{ background: "var(--background)" }}>
         <div className="w-full max-w-md">
           <div className="flex items-center gap-3 mb-6">
-            <img src="/icon.png" alt="OmniLock" className="w-11 h-11 rounded-xl object-cover glow-cyan" />
+            <img src="/icon.png" alt="InnologyLock" className="w-11 h-11 rounded-xl object-cover glow-cyan" />
             <div>
-              <div className="text-lg font-semibold tracking-tight">OmniLock</div>
+              <div className="text-lg font-semibold tracking-tight">InnologyLock</div>
               <div className="text-[11px] text-[color:var(--muted-foreground)] tracking-wider uppercase">by InnologyBD</div>
             </div>
           </div>

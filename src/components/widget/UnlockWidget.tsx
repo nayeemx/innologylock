@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { Lock, Shield, X, Fingerprint } from "lucide-react";
 import { widgetUnlock, widgetUnlockBiometric, hideWidget, checkBiometric } from "../../lib/tauri-bridge";
@@ -88,7 +88,7 @@ export function UnlockWidget() {
              className="h-10 w-full flex items-center justify-center cursor-move relative"
              style={{ background: "var(--gradient-brand)" }}>
           <Shield className="w-4 h-4 text-white mr-2" />
-          <span className="text-xs font-medium text-white/90">OmniLock</span>
+          <span className="text-xs font-medium text-white/90">InnologyLock</span>
           <button onClick={handleClose}
                   className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md hover:bg-white/20 transition-colors">
             <X className="w-3.5 h-3.5 text-white/80" />

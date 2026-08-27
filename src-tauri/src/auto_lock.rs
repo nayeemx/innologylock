@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+﻿use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Mutex, Once, OnceLock};
 
 static AUTO_LOCK_ENABLED: AtomicBool = AtomicBool::new(false);
@@ -6,7 +6,7 @@ static AUTO_LOCK_MINUTES: AtomicU32 = AtomicU32::new(5);
 static RUNNING: AtomicBool = AtomicBool::new(false);
 static ONCE: Once = Once::new();
 
-/// When true, locking the Windows screen (Win+L) triggers OmniLock to re-lock
+/// When true, locking the Windows screen (Win+L) triggers InnologyLock to re-lock
 /// all temporarily unlocked items.
 static LOCK_ON_SCREEN_LOCK: AtomicBool = AtomicBool::new(false);
 
@@ -133,7 +133,7 @@ fn start_screen_lock_listener() {
                 DefWindowProcA(hwnd, msg, wparam, lparam)
             }
 
-            let class_name = b"OmniLockScreenLock\0";
+            let class_name = b"InnologyLockScreenLock\0";
             let mut cls = WNDCLASSEXA {
                 cb_size: std::mem::size_of::<WNDCLASSEXA>() as u32,
                 style: 0,
@@ -152,7 +152,7 @@ fn start_screen_lock_listener() {
             RegisterClassExA(&mut cls as *mut _ as *const u8);
 
             let hwnd = CreateWindowExA(
-                0, class_name.as_ptr(), b"OmniLock\0".as_ptr(),
+                0, class_name.as_ptr(), b"InnologyLock\0".as_ptr(),
                 WS_OVERLAPPED, CW_USEDEFAULT, CW_USEDEFAULT, 0, 0,
                 0, 0, GetModuleHandleA(0 as *const u8), std::ptr::null_mut(),
             );

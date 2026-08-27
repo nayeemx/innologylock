@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { ShieldAlert, Fingerprint, HardDrive, FileLock2, Bug, RefreshCw, CheckCircle2, XCircle, AlertTriangle, Cog, Activity, RefreshCcw, ShieldCheck, Menu, Search, Wrench } from "lucide-react";
 import { getDiagnostics, recoverAcl, installContextMenu, uninstallContextMenu, isContextMenuInstalled, scanAclDamage, bulkRecoverAcl, type DiagnosticsDto } from "../../lib/tauri-bridge";
 import { SectionHeader } from "../shared/SectionHeader";
@@ -25,7 +25,7 @@ export function DiagnosticsPage() {
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <SectionHeader
-        eyebrow="DIAG · Observability"
+        eyebrow="DIAG Â· Observability"
         title="System Diagnostics"
         subtitle="Live health checks for every feature. If something is broken, this page tells you exactly what and why."
       />
@@ -80,7 +80,7 @@ export function DiagnosticsPage() {
               <div className="space-y-2 text-sm">
                 <Row label="Windows Service running" ok={data.service.running} />
                 <p className="text-xs text-[color:var(--muted-foreground)]">
-                  {data.service.running ? "Guardian pipe daemon is active" : "Service not running — ACL enforcement still works via app"}
+                  {data.service.running ? "Guardian pipe daemon is active" : "Service not running â€” ACL enforcement still works via app"}
                 </p>
               </div>
             </StatusCard>
@@ -192,7 +192,7 @@ function ContextMenuSection() {
       </div>
       <div className="p-5 space-y-3">
         <p className="text-xs text-[color:var(--muted-foreground)]">
-          Registers "Lock with OmniLock" and "Unlock with OmniLock" in the right-click context menu for files, folders, and drives in Windows Explorer.
+          Registers "Lock with InnologyLock" and "Unlock with InnologyLock" in the right-click context menu for files, folders, and drives in Windows Explorer.
         </p>
         <div className="flex items-center gap-3">
           <button onClick={handleInstall} disabled={loading || installed === true}
