@@ -1801,6 +1801,7 @@ dependencies = [
  "getrandom 0.2.17",
  "hmac",
  "innologylock-shared",
+ "once_cell",
  "open",
  "reqwest 0.12.28",
  "serde",

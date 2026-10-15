@@ -71,40 +71,56 @@ pub fn get_locked_items() -> Vec<LockedItem> {
     }
 }
 
-pub fn notify_lock_file(path: &str) {
+pub fn notify_lock_file(path: &str) -> Result<String, String> {
     let display_name = std::path::Path::new(path)
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| path.to_string());
-    let _ = pipe_request(&SvcRequest::LockFile {
+    match pipe_request(&SvcRequest::LockFile {
         path: path.to_string(),
         display_name,
-    });
+    }) {
+        Some(SvcResponse::Ok { message }) => Ok(message),
+        Some(other) => Err(format!("Unexpected response: {:?}", other)),
+        None => Err("Service not reachable — lock not applied".to_string()),
+    }
 }
 
-pub fn notify_lock_folder(path: &str) {
+pub fn notify_lock_folder(path: &str) -> Result<String, String> {
     let display_name = std::path::Path::new(path)
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| path.to_string());
-    let _ = pipe_request(&SvcRequest::LockFolder {
+    match pipe_request(&SvcRequest::LockFolder {
         path: path.to_string(),
         display_name,
-    });
+    }) {
+        Some(SvcResponse::Ok { message }) => Ok(message),
+        Some(other) => Err(format!("Unexpected response: {:?}", other)),
+        None => Err("Service not reachable — lock not applied".to_string()),
+    }
 }
 
-pub fn notify_lock_drive(drive_letter: &str) {
-    let _ = pipe_request(&SvcRequest::LockDrive {
+pub fn notify_lock_drive(drive_letter: &str) -> Result<String, String> {
+    match pipe_request(&SvcRequest::LockDrive {
         drive_letter: drive_letter.to_string(),
         display_name: format!("{}:\\", drive_letter),
-    });
+    }) {
+        Some(SvcResponse::Ok { message }) => Ok(message),
+        Some(other) => Err(format!("Unexpected response: {:?}", other)),
+        None => Err("Service not reachable — lock not applied".to_string()),
+    }
 }
 
-pub fn notify_unlock_item(path: &str, password: &str) {
-    let _ = pipe_request(&SvcRequest::UnlockItem {
+pub fn notify_unlock_item(path: &str, password: &str) -> Result<String, String> {
+    match pipe_request(&SvcRequest::UnlockItem {
         path: path.to_string(),
         password: password.to_string(),
-    });
+    }) {
+        Some(SvcResponse::Ok { message }) => Ok(message),
+        Some(other) => Err(format!("Unexpected response: {:?}", other)),
+        None => Err("Service not reachable — unlock not applied".to_string()),
+    }
 }
 
 pub fn notify_force_remove_locked_item(path: &str) {
@@ -117,4 +133,28 @@ pub fn sync_vault_to_service(vault_data: &[u8]) {
     let _ = pipe_request(&SvcRequest::SyncVault {
         vault_data: vault_data.to_vec(),
     });
+}
+
+pub fn add_filter_path(path: &str) -> Result<String, String> {
+    match pipe_request(&SvcRequest::AddFilterPath { path: path.to_string() }) {
+        Some(SvcResponse::Ok { message }) => Ok(message),
+        Some(other) => Err(format!("Unexpected response: {:?}", other)),
+        None => Err("Service not reachable".to_string()),
+    }
+}
+
+pub fn remove_filter_path(path: &str) -> Result<String, String> {
+    match pipe_request(&SvcRequest::RemoveFilterPath { path: path.to_string() }) {
+        Some(SvcResponse::Ok { message }) => Ok(message),
+        Some(other) => Err(format!("Unexpected response: {:?}", other)),
+        None => Err("Service not reachable".to_string()),
+    }
+}
+
+pub fn set_filter_enabled(enabled: bool) -> Result<String, String> {
+    match pipe_request(&SvcRequest::SetFilterEnabled { enabled }) {
+        Some(SvcResponse::Ok { message }) => Ok(message),
+        Some(other) => Err(format!("Unexpected response: {:?}", other)),
+        None => Err("Service not reachable".to_string()),
+    }
 }

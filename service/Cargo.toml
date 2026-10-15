@@ -1,5 +1,5 @@
 ﻿[package]
-name = "innologylock-svc"
+name = "InnologyLock-svc"
 version = "0.0.28"
 authors = ["InnologyBD <support@innologybd.com>"]
 edition = "2021"

@@ -14,7 +14,7 @@ cd src-tauri && cargo check && cd ..
 # Full build (outputs MSI, NSIS exe, portable zip)
 # For signed builds (required for auto-updates):
 $env:TAURI_SIGNING_PRIVATE_KEY="<key content>"
-$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD="229689"
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD="<your-signing-password>"
 npx tauri build
 ```
 

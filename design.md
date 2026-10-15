@@ -1,8 +1,8 @@
-# OmniLock Design System
+﻿# InnologyLock Design System
 
 ## Brand Identity
 
-- **Product name**: OmniLock
+- **Product name**: InnologyLock
 - **Tagline**: Enterprise Desktop Security
 - **By**: InnologyBD
 
@@ -16,7 +16,7 @@
 - **Stroke width**: 2.5
 - **Size**: 24x24px (w-6 h-6) inside 44x44px (w-11 h-11) container
 - **Container**: Rounded-xl (`border-radius: 0.75rem`)
-- **Background**: `var(--gradient-brand)` — `linear-gradient(135deg, oklch(0.65 0.18 210), oklch(0.55 0.22 295))` (cyan-to-violet)
+- **Background**: `var(--gradient-brand)` â€” `linear-gradient(135deg, oklch(0.65 0.18 210), oklch(0.55 0.22 295))` (cyan-to-violet)
 - **Icon color**: `text-primary-foreground` (white in both themes)
 - **Glow effect**: `.glow-cyan` overlay with 60% opacity
 
@@ -52,11 +52,11 @@ All colors use OKLCH color space for perceptual uniformity.
 
 | Token | Light | Dark | Usage |
 |-------|-------|------|-------|
-| `--primary` | `oklch(0.65 0.18 210)` | `oklch(0.78 0.16 210)` | Cyan accent — buttons, active states, brand |
-| `--accent` | `oklch(0.55 0.22 295)` | `oklch(0.65 0.22 295)` | Violet accent — 2FA, secondary brand |
-| `--success` | `oklch(0.65 0.17 155)` | `oklch(0.75 0.17 155)` | Green — healthy, active, verified |
-| `--warning` | `oklch(0.72 0.17 75)` | `oklch(0.82 0.17 75)` | Amber — alerts, caution |
-| `--destructive` | `oklch(0.60 0.22 25)` | `oklch(0.65 0.22 25)` | Red — remove, danger, deny |
+| `--primary` | `oklch(0.65 0.18 210)` | `oklch(0.78 0.16 210)` | Cyan accent â€” buttons, active states, brand |
+| `--accent` | `oklch(0.55 0.22 295)` | `oklch(0.65 0.22 295)` | Violet accent â€” 2FA, secondary brand |
+| `--success` | `oklch(0.65 0.17 155)` | `oklch(0.75 0.17 155)` | Green â€” healthy, active, verified |
+| `--warning` | `oklch(0.72 0.17 75)` | `oklch(0.82 0.17 75)` | Amber â€” alerts, caution |
+| `--destructive` | `oklch(0.60 0.22 25)` | `oklch(0.65 0.22 25)` | Red â€” remove, danger, deny |
 
 #### Gradient
 
@@ -167,9 +167,9 @@ All cards/panels use `glass rounded-2xl` with `border-[color:var(--border)]` bot
 
 ## Rules
 
-1. **Never use hardcoded dark-mode colors** — always use CSS custom properties
+1. **Never use hardcoded dark-mode colors** â€” always use CSS custom properties
 2. **All surface backgrounds** must use `bg-surface`, `bg-surface-hover`, or `bg-surface-active`
 3. **All borders** must use `border-surface-border` or `border-[color:var(--border)]`
-4. **Taskbar icon must match dashboard logo** — same Shield shape, same gradient colors
+4. **Taskbar icon must match dashboard logo** â€” same Shield shape, same gradient colors
 5. **Test in both light and dark mode** before committing UI changes
-6. **Icons from lucide-react only** — no other icon libraries
+6. **Icons from lucide-react only** â€” no other icon libraries

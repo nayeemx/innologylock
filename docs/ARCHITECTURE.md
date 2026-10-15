@@ -41,7 +41,7 @@ InnologyLock uses a **single-process Tauri architecture** with a dual-threaded R
                |  â”‚  file_locker.rs   â† AES-256-GCM  â”‚  |
                 |  â”‚  drive_locker.rs   â† NoDrives+Enc â”‚  |
                 |  â”‚  vault_storage.rs â† Vault Storage â”‚  |
-               |  â”‚  panic_hotkey.rs     â† Win+Alt+L   â”‚  |
+               |  â”‚  panic_hotkey.rs     â† Ctrl+Alt+L  â”‚  |
                |  â”‚  watchdog.rs          â† Self-monitorâ”‚ â”‚
                |  â”‚  models.rs          â† All DTOs     â”‚  |
                |  â”‚  lib.rs             â† All commands â”‚  |
@@ -105,7 +105,7 @@ Blocks the following via registry keys and process killing:
 | Installers (MSI/setup) | Polling + kill | `msiexec.exe`, `setup.exe`, `install.exe`, etc. via `TerminateProcess` |
 
 ### 2.4 Panic Hotkey Engine
-- **Hotkey:** Win + Alt + L
+- **Hotkey:** Ctrl + Alt + L
 - **Implementation:** `RegisterHotKey` via raw FFI: `GetModuleHandleA("user32.dll")` â†’ `GetProcAddress("RegisterHotKey")` â†’ call via `std::mem::transmute`
 - **Message loop:** Separate thread calls `GetMessageW`/`TranslateMessage`/`DispatchMessageW` in loop
 - **Trigger:** On `WM_HOTKEY` (0x0312), sets `PANIC_ACTIVE` atomic flag
@@ -124,10 +124,21 @@ Blocks the following via registry keys and process killing:
 - Frontend prompt (App.tsx, full-screen overlay after unlock): **Re-lock all** â†’ `cmd_relock_entries` (re-encrypts each path via `lock_folder`/`lock_file` by `is_dir()`, saves vault + `update_locked_folders` + summary; per-item status `ok`/`already_locked`/error; failures stay listed). **Keep unlocked** â†’ `cmd_forget_unlocked_entries` (removes entries from both `locked_files` and `locked_folders`, `notify_folder_locked`, saves vault + summary). No silent re-encryption.
 
 ### 2.7 Legacy Service ACL State Purge (v0.0.36)
-- The service (`service/src/bin/svc.rs`) persists `locked_items` to ProgramData and re-applies owner=SYSTEM ACL locks at boot â€” legacy behavior incompatible with encryption locks.
-- On app startup the setup hook calls `service_client::get_locked_items()` and purges each via `notify_force_remove_locked_item`. Runs once per launch; empty afterwards â†’ no-op.
+- The service (`service/src/bin/svc.rs`) persists `locked_items` to ProgramData and re-applies owner=SYSTEM ACL locks at boot — legacy behavior incompatible with encryption locks.
+- On app startup the setup hook calls `service_client::get_locked_items()` and purges each via `notify_force_remove_locked_item`. Runs once per launch; empty afterwards → no-op.
 
-### 2.8 Self-Monitoring Watchdog
+### 2.8 Safe ACL Lock Rewrite (v0.0.39 — partially complete, known issues)
+- **Replaces** the old destructive `apply_lock` that set owner=SYSTEM + replaced DACL (permanently destroyed access on the user's office PC).
+- **New `apply_lock(path)`** in `service/src/acl.rs`:
+  1. Saves current DACL + owner to a backup file at `C:\ProgramData\InnologyBD\InnologyLock\acl_backups\<hash>.bin` (format: `[4] owner_len (u32 LE) | [owner_len] owner_sid_bytes | [rest] original_dacl_bytes`).
+  2. Adds a **DENY ACE** for the current user with `GENERIC_ALL` + `SUB_CONTAINERS_AND_OBJECTS_INHERIT` inheritance — does NOT change ownership, does NOT replace existing DACL (merges the DENY ACE).
+- **`remove_lock(path)`**: restores original DACL from backup file, deletes backup, recursively resets child ACLs.
+- **`verify_lock(path)`**: checks if backup file exists (instead of checking owner==SYSTEM).
+- **App-side commands**: `cmd_add_locked_folder/file` now calls `service_client::notify_lock_folder/notify_lock_file` via named pipe (previously used AES encryption via `file_locker`). `cmd_remove_locked_folder/file` calls `service_client::notify_unlock_item`.
+- **Named-pipe return types**: `notify_lock_file`, `notify_lock_folder`, `notify_lock_drive`, `notify_unlock_item` now return `Result<String, String>` instead of fire-and-forget — callers receive pipe errors (e.g., "Service not reachable — lock not applied").
+- **⚠️ Known issue (v0.0.39):** The DENY ACE does NOT actually block Explorer access — user can still open the locked folder. Root cause under investigation.
+
+### 2.9 Self-Monitoring Watchdog
 - Single thread polls every 500ms using `sysinfo`
 - Checks if `InnologyLock.exe` is still running
 - If main process died (unexpected crash/restart), attempts to restart itself from same directory
@@ -150,10 +161,10 @@ All commands return `Result<T, String>` with human-readable error messages. Ever
 | `cmd_trigger_panic_lock` | None | `Result<(), String>` | Register panic hotkey |
 | `cmd_add_locked_drive` | `drive_letter` | `Result<(), String>` | Lock drive (NoDrives hide only) |
 | `cmd_remove_locked_drive` | `drive_letter` | `Result<(), String>` | Unlock drive |
-| `cmd_add_locked_file` | `path` | `Result<String, String>` | Lock file (AES-256-GCM encrypt â†’ `.InnologyLock`) |
-| `cmd_remove_locked_file` | `path` | `Result<String, String>` | Unlock file (decrypt in place) |
-| `cmd_add_locked_folder` | `path` | `Result<String, String>` | Lock folder (recursive encrypt) |
-| `cmd_remove_locked_folder` | `path` | `Result<String, String>` | Unlock folder (recursive decrypt) |
+| `cmd_add_locked_file` | `path` | `Result<String, String>` | Lock file (ACL DENY ACE via service pipe; see Â§2.8) |
+| `cmd_remove_locked_file` | `path` | `Result<String, String>` | Unlock file (ACL restore via service pipe) |
+| `cmd_add_locked_folder` | `path` | `Result<String, String>` | Lock folder (ACL DENY ACE via service pipe; see Â§2.8) |
+| `cmd_remove_locked_folder` | `path` | `Result<String, String>` | Unlock folder (ACL restore via service pipe) |
 | `cmd_scan_acl_damage` | `path` | `Result<Vec<String>, String>` | Find all items owned by SYSTEM (old-format lock damage) |
 | `cmd_bulk_recover_acl` | `paths` | `Vec<(String, String)>` | `force_unlock` each path; purges service re-lock list |
 | `cmd_force_unlock` | `path` | `Result<String, String>` | Take ownership + reset DACL (stubborn files) |

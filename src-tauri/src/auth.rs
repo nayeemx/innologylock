@@ -83,24 +83,29 @@ pub fn create_session_token() -> Result<SessionToken, String> {
     })
 }
 
-pub fn unlock_session(auth: AuthPayload) -> Result<SessionToken, String> {
-    let config = vault::decrypt_vault(&auth.master_password)?;
+pub fn unlock_session(auth: AuthPayload) -> Result<(SessionToken, VaultConfig), String> {
+    // Check vault version before deciding if migration is needed
+    let needs_migration = {
+        let data = std::fs::read(crate::vault::vault_path())
+            .map_err(|e| format!("Vault not found: {e}"))?;
+        let encrypted: crate::models::EncryptedVault =
+            serde_json::from_slice(&data).map_err(|e| format!("Invalid vault: {e}"))?;
+        encrypted.version < crate::vault::CURRENT_VAULT_VERSION
+    };
 
-    let computed_hash =
-        vault::hash_password(&auth.master_password, &config.password_salt)?;
-
-    let hash_eq: bool = computed_hash
-        .as_slice()
-        .ct_eq(config.password_hash.as_slice())
-        .into();
-
-    if !hash_eq {
-        return Err("Invalid master password".to_string());
+    if needs_migration {
+        vault::migrate_vault_if_needed(&auth.master_password)
+            .map_err(|e| format!("Migration failed: {e}"))?;
     }
 
-    vault::migrate_vault_if_needed(&auth.master_password).ok();
-
-    let config = vault::decrypt_vault(&auth.master_password)?;
+    let config = vault::decrypt_vault(&auth.master_password)
+        .map_err(|e| {
+            if e.contains("Invalid") || e.contains("decrypt") || e.contains("AES") {
+                "Invalid master password".to_string()
+            } else {
+                e
+            }
+        })?;
 
     if config.totp_enabled {
         if auth.totp_code.is_empty() {
@@ -112,7 +117,8 @@ pub fn unlock_session(auth: AuthPayload) -> Result<SessionToken, String> {
         }
     }
 
-    create_session_token()
+    let token = create_session_token()?;
+    Ok((token, config))
 }
 
 pub fn verify_security_answer(answer: &str, stored_hash: &[u8]) -> bool {

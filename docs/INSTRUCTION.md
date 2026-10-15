@@ -97,21 +97,21 @@ InnologyLock/
 
 ### TypeScript Check (fast, catches frontend errors)
 ```powershell
-cd D:\projects\code\InnologyLock
+cd D:\projects\code\innologylock
 npx tsc --noEmit
 ```
 Must produce zero errors. If there are errors, fix them before proceeding.
 
 ### Rust Check (medium, catches backend errors)
 ```powershell
-cd D:\projects\code\InnologyLock\src-tauri
+cd D:\projects\code\innologylock\src-tauri
 cargo check
 ```
 Must produce zero errors. If there are errors, read them carefully â€” Rust gives exact file:line for every issue.
 
 ### Full Production Build (slow, outputs all bundles)
 ```powershell
-cd D:\projects\code\InnologyLock
+cd D:\projects\code\innologylock
 npx tauri build
 ```
 Output products in `src-tauri/target/release/bundle/`:
@@ -168,7 +168,7 @@ All three commands must succeed with zero errors. Only then is the feature consi
 After any session or when things feel wrong, run this:
 
 ```powershell
-cd D:\projects\code\InnologyLock
+cd D:\projects\code\innologylock
 echo "=== TypeScript Check ==="
 npx tsc --noEmit
 echo "=== Rust Check ==="

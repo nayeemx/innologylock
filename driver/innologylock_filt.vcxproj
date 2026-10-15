@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}</ProjectGuid>
+    <RootNamespace>InnologyLockFilter</RootNamespace>
+    <ProjectName>innologylock_filt</ProjectName>
+    <DriverType>Wdm</DriverType>
+    <KMDFVersionMajor>1</KMDFVersionMajor>
+    <KMDFVersionMinor>33</KMDFVersionMinor>
+    <TargetVersion>Windows10</TargetVersion>
+    <TargetPlatformVersion>10.0.26100.0</TargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.26100.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Driver</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>WindowsKernelModeDriver10.0</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <KernelModeDriverStrict>true</KernelModeDriverStrict>
+    <SpectreMitigation>false</SpectreMitigation>
+    <EnableInfVerif>false</EnableInfVerif>
+    <EnableInfCatalogSigning>false</EnableInfCatalogSigning>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <SpectreMitigation>false</SpectreMitigation>
+    <EnableInfVerif>false</EnableInfVerif>
+    <EnableInfCatalogSigning>false</EnableInfCatalogSigning>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+    <Import Project="$(WDKContentRoot)\build\WindowsDriver.Common.props" Condition="Exists('$(WDKContentRoot)\build\WindowsDriver.Common.props')" />
+    <Import Project="$(WDKContentRoot)\build\WindowsDriver.KernelMode.props" Condition="Exists('$(WDKContentRoot)\build\WindowsDriver.KernelMode.props')" />
+  </ImportGroup>
+  <PropertyGroup>
+    <TargetName>innologylock_filt</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);BINARY_COMPATIBLE=0;NT;UNICODE;_UNICODE;NT_KERNEL_MODE</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(SolutionDir)src</AdditionalIncludeDirectories>
+      <SpectreMitigation>false</SpectreMitigation>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>%(AdditionalDependencies);fltmgr.lib</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="src\filter.c" />
+    <ClInclude Include="src\filter.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+    <Import Project="$(WDKContentRoot)\build\WindowsDriver.KernelMode.targets" Condition="Exists('$(WDKContentRoot)\build\WindowsDriver.KernelMode.targets')" />
+  </ImportGroup>
+</Project>

@@ -1,11 +1,18 @@
-﻿import { useState, useEffect } from "react";
+﻿import { useState, useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { Lock, Shield, X, Fingerprint } from "lucide-react";
-import { widgetUnlock, widgetUnlockBiometric, hideWidget, checkBiometric } from "../../lib/tauri-bridge";
+import { Lock, Shield, X, Fingerprint, AlertTriangle } from "lucide-react";
+import { widgetUnlock, widgetUnlockBiometric, hideWidget, checkBiometric, filterUnlock, filterDeny } from "../../lib/tauri-bridge";
 
 interface UnlockTarget {
   target_type: string;
   target_id: string;
+  display_name: string;
+}
+
+interface FilterAccessRequest {
+  request_id: number;
+  message_id: number;
+  file_path: string;
   display_name: string;
 }
 
@@ -16,47 +23,112 @@ const typeLabels: Record<string, string> = {
   drive: "Drive",
 };
 
+const MAX_ATTEMPTS = 3;
+
 export function UnlockWidget() {
   const [target, setTarget] = useState<UnlockTarget | null>(null);
+  const [filterReq, setFilterReq] = useState<FilterAccessRequest | null>(null);
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [biometricLoading, setBiometricLoading] = useState(false);
+  const [attempts, setAttempts] = useState(0);
+  const [blocked, setBlocked] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    const unlisten = listen<UnlockTarget>("unlock-target", (event) => {
+    const unlistenTarget = listen<UnlockTarget>("unlock-target", (event) => {
       setTarget(event.payload);
+      setFilterReq(null);
       setPassword("");
       setError("");
       setSuccess(false);
+      setAttempts(0);
+      setBlocked(false);
+      setCountdown(0);
+      if (countdownRef.current) clearInterval(countdownRef.current);
     });
-    // Check if biometric is available
+
+    const unlistenFilter = listen<FilterAccessRequest>("filter-access-request", (event) => {
+      setFilterReq(event.payload);
+      setTarget({
+        target_type: "folder",
+        target_id: event.payload.file_path,
+        display_name: event.payload.display_name,
+      });
+      setPassword("");
+      setError("");
+      setSuccess(false);
+      setAttempts(0);
+      setBlocked(false);
+      setCountdown(0);
+      if (countdownRef.current) clearInterval(countdownRef.current);
+    });
+
     checkBiometric().then(s => setBiometricAvailable(s.available)).catch(() => {});
-    return () => { unlisten.then(fn => fn()); };
+    return () => {
+      unlistenTarget.then(fn => fn());
+      unlistenFilter.then(fn => fn());
+      if (countdownRef.current) clearInterval(countdownRef.current);
+    };
   }, []);
 
-  const handleClose = () => {
+  const handleClose = async () => {
+    if (filterReq) {
+      await filterDeny(filterReq.message_id, filterReq.request_id).catch(() => {});
+    }
     setTarget(null);
+    setFilterReq(null);
     setPassword("");
     setError("");
     setSuccess(false);
+    setAttempts(0);
+    setBlocked(false);
     hideWidget();
   };
 
+  const startLockout = () => {
+    setBlocked(true);
+    setCountdown(30);
+    countdownRef.current = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          if (countdownRef.current) clearInterval(countdownRef.current);
+          setBlocked(false);
+          setAttempts(0);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
   const handleSubmit = async () => {
-    if (!password) return;
+    if (!password || blocked) return;
     setLoading(true);
     setError("");
     try {
-      await widgetUnlock(password);
-      setSuccess(true);
-      setTimeout(() => {
-        handleClose();
-      }, 1500);
+      if (filterReq) {
+        await filterUnlock(filterReq.message_id, filterReq.request_id, password);
+        setSuccess(true);
+        setTimeout(() => handleClose(), 1500);
+      } else {
+        await widgetUnlock(password);
+        setSuccess(true);
+        setTimeout(() => handleClose(), 1500);
+      }
     } catch (e: any) {
-      setError(String(e));
+      const newAttempts = attempts + 1;
+      setAttempts(newAttempts);
+      if (newAttempts >= MAX_ATTEMPTS) {
+        setError(`Too many failed attempts. Blocked for 30 seconds.`);
+        startLockout();
+      } else {
+        setError(`Incorrect password. ${MAX_ATTEMPTS - newAttempts} attempt(s) remaining.`);
+      }
     }
     setLoading(false);
   };
@@ -67,16 +139,28 @@ export function UnlockWidget() {
   };
 
   const handleBiometric = async () => {
+    if (blocked) return;
     setBiometricLoading(true);
     setError("");
     try {
-      await widgetUnlockBiometric();
-      setSuccess(true);
-      setTimeout(() => {
-        handleClose();
-      }, 1500);
+      if (filterReq) {
+        await widgetUnlockBiometric();
+        setSuccess(true);
+        setTimeout(() => handleClose(), 1500);
+      } else {
+        await widgetUnlockBiometric();
+        setSuccess(true);
+        setTimeout(() => handleClose(), 1500);
+      }
     } catch (e: any) {
-      setError(String(e));
+      const newAttempts = attempts + 1;
+      setAttempts(newAttempts);
+      if (newAttempts >= MAX_ATTEMPTS) {
+        setError(`Too many failed attempts. Blocked for 30 seconds.`);
+        startLockout();
+      } else {
+        setError(`Fingerprint failed. ${MAX_ATTEMPTS - newAttempts} attempt(s) remaining.`);
+      }
     }
     setBiometricLoading(false);
   };
@@ -104,69 +188,105 @@ export function UnlockWidget() {
                   <Lock className="w-5 h-5 text-[color:var(--primary)]" />
                 </div>
                 <div>
-                  <div className="text-sm font-medium">Unlock {typeLabels[target.target_type] || target.target_type}</div>
+                  <div className="text-sm font-medium">
+                    {filterReq ? "Access Blocked" : "Unlock"} {typeLabels[target.target_type] || target.target_type}
+                  </div>
                   <div className="text-xs text-[color:var(--muted-foreground)] truncate max-w-[260px]">{target.display_name}</div>
                 </div>
               </div>
 
-              <p className="text-xs text-[color:var(--muted-foreground)] mb-4">
-                Enter your master password to access this item.
-              </p>
-
-              {error && (
-                <div className="mb-3 p-2.5 rounded-lg bg-[color:var(--destructive)]/15 border border-[color:var(--destructive)]/30 text-xs text-[color:var(--destructive)]">
-                  {error}
+              {blocked ? (
+                <div className="flex flex-col items-center py-4 gap-3">
+                  <AlertTriangle className="w-8 h-8 text-[color:var(--destructive)]" />
+                  <div className="text-sm font-medium text-[color:var(--destructive)]">Too Many Failed Attempts</div>
+                  <div className="text-xs text-[color:var(--muted-foreground)]">
+                    Wait {countdown} seconds before trying again
+                  </div>
+                  <div className="w-full h-2 rounded-full bg-surface overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-1000"
+                      style={{
+                        background: "var(--gradient-brand)",
+                        width: `${(countdown / 30) * 100}%`,
+                      }}
+                    />
+                  </div>
+                  <button onClick={handleClose}
+                          className="mt-2 px-6 py-2 rounded-lg text-sm bg-surface border border-surface-border hover:bg-surface-active">
+                    Close
+                  </button>
                 </div>
-              )}
+              ) : (
+                <>
+                  <p className="text-xs text-[color:var(--muted-foreground)] mb-4">
+                    {filterReq
+                      ? "Enter your master password to access this locked folder."
+                      : "Enter your master password to access this item."}
+                  </p>
 
-              <input
-                type="password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Master password"
-                autoFocus
-                className="w-full px-4 py-3 rounded-lg bg-surface border border-surface-border text-sm outline-none focus:border-[color:var(--primary)]/50 mb-3 placeholder:text-[color:var(--muted-foreground)]"
-              />
-
-              {biometricAvailable && (
-                <button
-                  onClick={handleBiometric}
-                  disabled={biometricLoading}
-                  className="w-full px-4 py-2.5 rounded-lg text-sm font-medium mb-4 flex items-center justify-center gap-2 border border-[color:var(--accent)]/30 hover:bg-[color:var(--accent)]/10 transition-colors disabled:opacity-40"
-                  style={{ color: "var(--accent)" }}>
-                  {biometricLoading ? (
-                    "Verifying fingerprint..."
-                  ) : (
-                    <>
-                      <Fingerprint className="w-4 h-4" />
-                      Use Fingerprint
-                    </>
+                  {error && (
+                    <div className="mb-3 p-2.5 rounded-lg bg-[color:var(--destructive)]/15 border border-[color:var(--destructive)]/30 text-xs text-[color:var(--destructive)]">
+                      {error}
+                    </div>
                   )}
-                </button>
-              )}
 
-              {biometricAvailable && (
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="flex-1 h-px bg-surface-border"></div>
-                  <span className="text-[10px] uppercase tracking-widest text-[color:var(--muted-foreground)]">or</span>
-                  <div className="flex-1 h-px bg-surface-border"></div>
-                </div>
-              )}
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Master password"
+                    autoFocus
+                    disabled={loading}
+                    className="w-full px-4 py-3 rounded-lg bg-surface border border-surface-border text-sm outline-none focus:border-[color:var(--primary)]/50 mb-3 placeholder:text-[color:var(--muted-foreground)] disabled:opacity-50"
+                  />
 
-              <div className="flex gap-2">
-                <button onClick={handleClose}
-                        className="px-4 py-2.5 rounded-lg text-sm bg-surface border border-surface-border hover:bg-surface-active flex-1">
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSubmit}
-                  disabled={!password || loading}
-                  className="flex-[2] px-4 py-2.5 rounded-lg text-sm font-medium text-[color:var(--primary-foreground)] flex items-center justify-center gap-2 glow-cyan disabled:opacity-40"
-                  style={{ background: "var(--gradient-brand)" }}>
-                  {loading ? "Verifying..." : "Unlock"} <Lock className="w-4 h-4" />
-                </button>
-              </div>
+                  {biometricAvailable && (
+                    <button
+                      onClick={handleBiometric}
+                      disabled={biometricLoading || loading}
+                      className="w-full px-4 py-2.5 rounded-lg text-sm font-medium mb-4 flex items-center justify-center gap-2 border border-[color:var(--accent)]/30 hover:bg-[color:var(--accent)]/10 transition-colors disabled:opacity-40"
+                      style={{ color: "var(--accent)" }}>
+                      {biometricLoading ? (
+                        "Verifying fingerprint..."
+                      ) : (
+                        <>
+                          <Fingerprint className="w-4 h-4" />
+                          Use Fingerprint
+                        </>
+                      )}
+                    </button>
+                  )}
+
+                  {biometricAvailable && (
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="flex-1 h-px bg-surface-border"></div>
+                      <span className="text-[10px] uppercase tracking-widest text-[color:var(--muted-foreground)]">or</span>
+                      <div className="flex-1 h-px bg-surface-border"></div>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <button onClick={handleClose}
+                            className="px-4 py-2.5 rounded-lg text-sm bg-surface border border-surface-border hover:bg-surface-active flex-1">
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleSubmit}
+                      disabled={!password || loading}
+                      className="flex-[2] px-4 py-2.5 rounded-lg text-sm font-medium text-[color:var(--primary-foreground)] flex items-center justify-center gap-2 glow-cyan disabled:opacity-40"
+                      style={{ background: "var(--gradient-brand)" }}>
+                      {loading ? "Verifying..." : "Unlock"} <Lock className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {attempts > 0 && !blocked && (
+                    <div className="mt-3 text-center text-[10px] text-[color:var(--muted-foreground)]">
+                      {attempts}/{MAX_ATTEMPTS} failed attempts
+                    </div>
+                  )}
+                </>
+              )}
             </>
           ) : success ? (
             <div className="text-center py-4">
@@ -175,7 +295,7 @@ export function UnlockWidget() {
               </div>
               <div className="text-sm font-medium text-[color:var(--success)]">Unlocked Successfully</div>
               <div className="text-xs text-[color:var(--muted-foreground)] mt-1">
-                {target?.target_type === "app" ? "Launching application..." : "You can now access this item."}
+                {filterReq ? "Folder is now accessible." : target?.target_type === "app" ? "Launching application..." : "You can now access this item."}
               </div>
             </div>
           ) : (

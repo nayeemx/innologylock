@@ -4,11 +4,13 @@
 
 ## Current State
 
-- **Version**: 0.0.39 (**unreleased** — async UI fix, OmniLock→InnologyLock rename). Working tree has uncommitted changes.. Working tree has uncommitted changes for this feature set.
-- **Last Updated**: 2026-08-26
-- **Project Name**: **InnologyLock** (renamed from OmniLock on 2026-08-26)
-- **Remaining manual step**: Rename project folder D:\projects\code\omnilock → innologylock, rename GitHub repo
-- **Build status**: âœ… `cargo check` (src-tauri) â€” 0 errors, 0 warnings. âœ… `npx tsc --noEmit` â€” clean.
+- **Version**: 0.0.39 (**unreleased** — minifilter driver + folder container lock + 3-attempt lockout). Working tree has uncommitted changes for this feature set.
+- **Last Updated**: 2026-10-15
+- **2026-10-15 scan session**: external scan verdict confirmed — signing passwords removed from all tracked docs (private key was never committed); rename to InnologyLock finished (zero old-name matches in source; `OLCK`/`OMNI` bytes + biometric entropy kept for compat). See CHANGELOG `[Unreleased]` + DEV_LOG 2026-10-15 entry.
+- **Project Name**: **InnologyLock** (rename completed 2026-08-26)
+- **Remaining manual steps**: (1) Rename GitHub repo to innologylock (project folder already renamed). (2) Rotate the signing password — both past values are in git history (see 2026-10-15 entries in CHANGELOG + DEV_LOG). (3) Install WDK + build driver (see "Next Session").
+- **Build status**: ✅ `cargo check` (src-tauri) — 0 errors. ✅ `cargo check` (service) — 0 errors (1 snake_case warning). ✅ `npx tsc --noEmit` — clean. ⏳ Driver build requires WDK.
+- **Runtime status**: App compiles, runs, service starts in standalone mode. **Lock/unlock uses AES-256-GCM encryption (file_locker) + minifilter driver blocks Explorer access to locked paths.**
 
 ---
 
@@ -24,15 +26,53 @@
 ---
 
 
-## What Was Done in This Session (2026-08-26)
+## What Was Done in This Session (2026-08-27)
+
+### 1. Safe ACL Lock Rewrite (service/src/acl.rs — COMPLETE REWRITE)
+The old `apply_lock` was destructive: set owner=SYSTEM + replaced DACL (only Admins+SYSTEM). User lost access to folders on their office PC.
+
+**New approach:**
+- `apply_lock(path)`: saves current DACL + owner to a backup file (`C:\ProgramData\InnologyBD\InnologyLock\acl_backups\<hash>.bin`), then adds a DENY ACE for the current user with `SUB_CONTAINERS_AND_OBJECTS_INHERIT` inheritance. Does NOT change ownership. Does NOT replace existing DACL — merges the DENY ACE into it.
+- `remove_lock(path)`: restores original DACL from backup file, deletes backup. Recursively resets child ACLs.
+- `verify_lock(path)`: checks if backup file exists (instead of checking owner==SYSTEM).
+- Backup format: `[4] owner_len (u32 LE) | [owner_len] owner_sid_bytes | [rest] original_dacl_bytes`
+
+### 2. Tauri App Commands Switched to Service ACL Lock
+- `cmd_add_locked_folder`: removed AES encryption (`file_locker::lock_folder`), now calls `service_client::notify_lock_folder(&path)`
+- `cmd_remove_locked_folder`: removed AES decryption, now calls `service_client::notify_unlock_item(&path, &password)`
+- `cmd_add_locked_file`: removed AES encryption, now calls `service_client::notify_lock_file(&path)`
+- `cmd_remove_locked_file`: removed AES decryption, now calls `service_client::notify_unlock_item(&path, &password)`
+- All lock commands now return errors from the service pipe (instead of silently ignoring failures)
+
+### 3. service_client.rs — Now Returns Results
+- `notify_lock_file`, `notify_lock_folder`, `notify_lock_drive`, `notify_unlock_item` all now return `Result<String, String>` instead of fire-and-forget
+- If the service pipe is unreachable, the command returns an error: "Service not reachable — lock not applied"
+
+### 4. VaultPage.tsx — Simplified UI
+- Removed "Vault Storage" section (Add/Extract/Delete encrypted files)
+- Updated description from "AES-256-GCM" to "ACL LOCK"
+- Subtitle now says: "Blocks access via Windows ACL. Locked items show 'Access Denied' in Explorer — unlock with password to restore access."
+
+### 5. Panic Hotkey Fix
+- Changed from `Win+Alt+L` (MOD_WIN = 0x0800, restricted by Windows) to `Ctrl+Alt+L` (MOD_CONTROL = 0x0002)
+- `MOD_WIN` requires elevated privileges — that's why it always failed with error 5
+
+### 6. Service Lib Name Fixed
+- `service/Cargo.toml`: lib name changed from `innologylock-svc` to `InnologyLock-svc` to match binary `use InnologyLock_svc::*` imports
+- Warning: snake_case lint warns about `InnologyLock_svc` but is harmless
+
+### 7. Service Binary Rebuilt
+- `service/target/debug/InnologyLock-svc.exe` rebuilt with new safe ACL code
+- Copied to `src-tauri/resources/InnologyLock-svc.exe`
+- `src-tauri/resources/InnologyLock-monitor.exe` also updated
 
 ### 1. Async Fix — UI No Longer Freezes During Lock/Unlock
 Converted 16 synchronous Tauri commands to async using 	okio::task::spawn_blocking. Previously, encrypting/decrypting files blocked the main thread, freezing the entire app (can't switch pages, can't interact with sidebar). Now heavy I/O runs off the UI thread.
 
 Commands converted: cmd_add_locked_file/folder, cmd_remove_locked_file/folder, cmd_toggle_locked_app, cmd_add_locked_app, cmd_remove_locked_app, cmd_relock_entries, cmd_rescue_unlock, cmd_recover_acl, cmd_force_unlock, cmd_vault_store_file, cmd_vault_extract_file, cmd_vault_delete_file, cmd_backup_vault, cmd_restore_vault, cmd_context_menu_lock/unlock, cmd_list_hidden_blobs.
 
-### 2. Rename — OmniLock → InnologyLock
-Replaced every occurrence of "omnilock"/"OmniLock" with "innologylock"/"InnologyLock" across 63 files: source code, configs, docs, Cargo packages, registry keys, file associations, window titles, bundle metadata. Cargo package names normalized to lowercase.
+### 2. Rename to InnologyLock
+Replaced every occurrence of the previous working title with "innologylock"/"InnologyLock" across 63 files: source code, configs, docs, Cargo packages, registry keys, file associations, window titles, bundle metadata. Cargo package names normalized to lowercase.
 ## What Was Done in This Session (2026-08-16) â€” the v0.0.36 feature set
 
 The user asked to scan the project, read every `.md` file, and solve everything still outstanding. All items below are in the working tree (uncommitted).
@@ -236,14 +276,14 @@ cd service && cargo check && cd ..
 | **Public key (base64)** | `RWRvm+e9hYPl7eUOcS2Q3cknhhVt06dE6IRPrbFNNE/CqnEDdfYs12Wy` |
 | **Private key file** | `src-tauri/update.key` |
 | **Backup copy** | `signing-keys/update-v0.1.0.key` |
-| **Password** | `InnologyLock2026` |
+| **Password** | (kept in password manager + local-only `signing-keys/README.json` — never commit it) |
 | **tauri.conf.json** | `pubkey = "EDE58385BDE79B6F"` |
 
 To sign a release manually (or in CI via secrets `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`):
 ```powershell
 $key = (Get-Content -Raw "src-tauri\update.key").Trim()
 $env:TAURI_SIGNING_PRIVATE_KEY = $key
-$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "InnologyLock2026"
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "<your-signing-password>"
 cmd /c "echo. | npx tauri signer sign `"path\to\installer.exe`""
 ```
 
@@ -304,18 +344,124 @@ Patch bumps: 0.0.35 â†’ 0.0.36 â†’ â€¦ â†’ 0.1.0
 ## Next Session: Continue from Here
 
 ### Where we left off
-v0.0.39 is **unreleased** — async UI fix + OmniLock→InnologyLock rename. All features compile clean (cargo check + tsc). Working tree has uncommitted changes for this feature set. **Manual steps remain**: rename project folder D:\projects\code\omnilock → innologylock, rename GitHub repo.
+v0.0.39 is **unreleased** — minifilter driver + folder container lock + 3-attempt lockout. All features compile clean (cargo check + tsc). Working tree has uncommitted changes for this feature set. **Manual steps remain**: rename GitHub repo, install WDK + build driver.
+
+### What Was Built This Session (2026-09-02)
+
+#### 1. Minifilter Driver (kernel-mode)
+- `driver/src/filter.c` + `driver/src/filter.h` — intercepts `IRP_MJ_CREATE` on locked paths
+- `driver/inf/innologylock_filt.inf` — driver installation INF
+- `driver/build.bat` — WDK build script
+- `driver/install.bat` — driver installation script (run as admin)
+- `driver/install_wdk.bat` — WDK download helper
+- **How it works**: When Explorer tries to open a locked folder, the driver intercepts the request, sends it to the service via filter communication port, service shows unlock modal, user authenticates, driver allows/blocks access.
+- **Requires**: WDK installed + test signing mode (`bcdedit /set testsigning on`)
+
+#### 2. Folder-to-Container Lock (file_locker.rs)
+- `lock_folder_as_container(path, key)` — folder → single `.InnologyLock` encrypted file (folder deleted)
+- `unlock_folder_from_container(blob_path, key)` — `.InnologyLock` → restore original folder
+- `is_folder_container(blob_path)` — detect if blob is a folder container
+- Container format: `[4] file_count | for each: [4] rel_path_len | rel_path | [4] content_len | content` — encrypted with AES-256-GCM
+- **User sees**: Lock a folder → folder disappears → single `.InnologyLock` file appears → double-click → widget → password → folder restored
+
+#### 3. 3-Attempt Lockout (UnlockWidget.tsx)
+- After 3 wrong passwords/fingerprints → 30-second cooldown
+- Progress bar shows countdown
+- App goes to tray during cooldown
+- Attempts reset after successful unlock or cooldown
+
+#### 4. Service Filter Bridge (filter_bridge.rs)
+- `add_filter_path(path)` — register path with minifilter driver via IOCTL
+- `remove_filter_path(path)` — unregister path
+- `clear_filter_paths()` — remove all locked paths
+- `set_filter_enabled(enabled)` — global enable/disable
+
+#### 5. Lock/Unlock Commands Updated
+- `cmd_add_locked_folder` — AES container lock + register with filter driver
+- `cmd_remove_locked_folder` — AES container unlock + remove from filter driver
+- `cmd_add_locked_file` — AES lock + register with filter driver
+- `cmd_remove_locked_file` — AES unlock + remove from filter driver
+
+### Build & Run Commands
+
+```bash
+# Dev mode (hot reload)
+npm run tauri dev
+
+# Production build (produces installer)
+npm run tauri build
+
+# TypeScript check only
+npx tsc --noEmit
+
+# Rust checks
+cd src-tauri && cargo check && cd ..
+cd service && cargo check && cd ..
+
+# Build minifilter driver (requires WDK)
+cd driver && build.bat
+
+# Install driver (requires admin + test signing)
+cd driver && install.bat
+```
+
+### Architecture (Updated)
+
+```
+InnologyLock/
+├── driver/                     # NEW: Minifilter driver (C + WDK)
+│   ├── src/filter.c           # IRP_MJ_CREATE interception
+│   ├── src/filter.h           # Shared definitions
+│   ├── inf/innologylock_filt.inf
+│   ├── build.bat
+│   └── install.bat
+├── src-tauri/                  # Rust backend (Tauri)
+│   └── src/
+│       ├── lib.rs             # Tauri commands (lock/unlock + filter registration)
+│       ├── file_locker.rs     # AES-256-GCM + folder container lock
+│       ├── service_client.rs  # IPC to service + filter path management
+│       └── ...
+├── service/                    # Windows service (driver ↔ app bridge)
+│   └── src/
+│       ├── filter_bridge.rs   # NEW: Filter driver communication via IOCTL
+│       ├── bin/svc.rs         # Service main + IPC handler
+│       └── ...
+├── shared/                     # IPC protocol (updated with filter messages)
+└── src/                        # React frontend
+    └── components/widget/
+        └── UnlockWidget.tsx   # 3-attempt lockout + countdown
+```
+
+### Flow: Lock a Folder
+1. User clicks "Lock Folder" → `cmd_add_locked_folder`
+2. `file_locker::lock_folder_as_container` → folder → single `.InnologyLock` file
+3. `service_client::add_filter_path` → service → IOCTL → driver registers path
+4. `.InnologyLock` file visible in Explorer (NOT hidden — user needs to see it)
+
+### Flow: Open a Locked Folder
+1. User double-clicks `.InnologyLock` file in Explorer
+2. File association: `InnologyLock.exe --open-locked "path\to\folder.InnologyLock"`
+3. App detects container type → shows unlock widget
+4. User enters password → `cmd_widget_unlock`
+5. `file_locker::unlock_folder_from_container` → folder restored
+6. User can now access the folder
+
+### Flow: Minifilter Blocks Access (when driver is loaded)
+1. User tries to open a locked path in Explorer
+2. Driver intercepts `IRP_MJ_CREATE` → sends request to service
+3. Service forwards to Tauri app → shows unlock modal
+4. User authenticates → driver allows access
+5. If 3 failures → app minimizes to tray
 
 ### Suggested next steps (in order)
-1. **Rename the project folder** (close this session first): cd D:\projects\code; Rename-Item "omnilock" "innologylock"
-2. **Rename GitHub repo**: Settings → Repository name → innologylock, then git remote set-url origin https://github.com/nayeemx/innologylock.git
-3. **Commit the changes** and build for testing.
-4. **E2E test on Windows** (must be on a real machine):
-   - Right-click a file/folder in Explorer → "Lock with InnologyLock" → file should encrypt and disappear from Explorer
-   - Right-click a locked file → "Unlock with InnologyLock" → authenticate → file decrypts
-   - Lock Windows screen (Win+L) → verify temp-unlocked items re-lock
-   - Check Hidden Items tab shows all .InnologyLock blobs
-   - Lock an app → click "Lock Data" → verify AppData folders are locked
-   - Kill a locked app → verify toast notification appears
-5. **Release v0.0.39** (bump versions, tag, CI build).
-6. Update docs as you go (standing rule).
+1. **Install WDK** — download from https://go.microsoft.com/fwlink/?LinkId=2371554, or run `driver/install_wdk.bat` as admin
+2. **Build driver** — open "Developer Command Prompt for VS 2022", cd to `driver/`, run `build.bat`
+3. **Enable test signing** — `bcdedit /set testsigning on` (reboot required)
+4. **Install driver** — run `driver/install.bat` as admin
+5. **E2E test on Windows**:
+   - Lock a folder → folder becomes `.InnologyLock` file → double-click → widget → password → folder restored
+   - Lock a file → `.InnologyLock` blob → double-click → widget → password → file restored
+   - 3 wrong passwords → 30-second cooldown → app to tray
+   - Right-click context menu lock/unlock
+6. **Release v0.0.39** (bump versions, tag, CI build).
+7. Update docs as you go (standing rule).

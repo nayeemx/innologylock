@@ -23,6 +23,7 @@ pub mod diagnostics;
 pub mod shell_access;
 pub mod cloud_status;
 pub mod shell_context;
+pub mod filter_client;
 
 use tauri::State;
 use tauri::Manager;
@@ -173,8 +174,7 @@ fn cmd_unlock_session(
     auth_payload: AuthPayload,
     app: tauri::AppHandle,
 ) -> Result<SessionToken, String> {
-    let token = auth::unlock_session(auth_payload.clone())?;
-    let mut config = vault::decrypt_vault(&auth_payload.master_password)?;
+    let (token, mut config) = auth::unlock_session(auth_payload.clone())?;
     let auto_lock_min = config.auto_lock_minutes;
 
     // Migrate: generate file_encryption_key for vaults that pre-date encryption support
@@ -352,7 +352,6 @@ fn cmd_remove_locked_drive(
     }
     let password_guard = state.password.lock().map_err(|e| e.to_string())?;
     let password = password_guard.as_ref().ok_or("No password in session")?;
-    service_client::notify_unlock_item(&format!("{}:\\", drive_letter), password);
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
     config.locked_drives.retain(|d| d != &drive_letter);
@@ -374,6 +373,10 @@ async fn cmd_add_locked_file(
     tokio::task::spawn_blocking(move || file_locker::lock_file(&enc_path, &enc_key))
         .await.map_err(|e| format!("Task join error: {e}"))?
         .map_err(|e| { logger::log("LOCK", &format!("lock_file failed: {} err={}", path, e)); e })?;
+    // Register with the minifilter driver
+    if let Err(e) = service_client::add_filter_path(&path) {
+        logger::log("LOCK", &format!("add_filter_path failed (non-fatal): {}", e));
+    }
     let locked = file_locker::is_file_locked(&path);
     cloud_status::set_lock_state(&path, true);
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
@@ -401,9 +404,12 @@ async fn cmd_remove_locked_file(
     tokio::task::spawn_blocking(move || file_locker::unlock_file(&ul_path, &ul_key))
         .await.map_err(|e| format!("Task join error: {e}"))?
         .map_err(|e| { logger::log("UNLOCK", &format!("unlock_file failed: {} err={}", path, e)); e })?;
+    // Remove from the minifilter driver
+    if let Err(e) = service_client::remove_filter_path(&path) {
+        logger::log("UNLOCK", &format!("remove_filter_path failed (non-fatal): {}", e));
+    }
     let still_locked = file_locker::is_file_locked(&path);
     cloud_status::set_lock_state(&path, false);
-    service_client::notify_unlock_item(&path, &password);
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
     config.locked_files.retain(|f| f != &path);
@@ -419,18 +425,15 @@ async fn cmd_add_locked_folder(
     path: String,
 ) -> Result<String, String> {
     require_valid_session(&state)?;
-    let key = require_file_key(&state)?;
     let password = { let g = state.password.lock().map_err(|e| e.to_string())?; g.clone().ok_or("No password in session")? };
-    logger::log("LOCK", &format!("lock_folder start: {}", path));
-    let lock_path = path.clone();
-    let lock_key = key;
-    let count = tokio::task::spawn_blocking(move || file_locker::lock_folder(&lock_path, &lock_key))
-        .await.map_err(|e| format!("Task join error: {e}"))?;
-    match count {
-        Ok(n) => logger::log("LOCK", &format!("lock_folder ok: {} files encrypted in {}", n, path)),
-        Err(e) => { logger::log("LOCK", &format!("lock_folder failed: {} err={}", path, e)); return Err(e); }
+    logger::log("LOCK", &format!("lock_folder (filter): {}", path));
+
+    if let Err(e) = filter_client::add_filter_path(&path) {
+        logger::log("LOCK", &format!("add_filter_path failed: {}", e));
+        return Err(format!("Failed to register with filter driver: {}. Is the driver loaded?", e));
     }
-    let locked = file_locker::is_folder_locked(&path);
+    logger::log("LOCK", &format!("lock_folder ok (filter): {}", path));
+
     cloud_status::set_lock_state(&path, true);
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
@@ -440,7 +443,7 @@ async fn cmd_add_locked_folder(
     vault::encrypt_vault(config, &password).map_err(|e| e.to_string())?;
     process_guard::update_locked_folders(config.locked_folders.clone());
     save_locked_items_summary(config);
-    if locked { Ok("locked".to_string()) } else { Ok("locked_unverified".to_string()) }
+    Ok("locked".to_string())
 }
 
 #[tauri::command]
@@ -449,29 +452,22 @@ async fn cmd_remove_locked_folder(
     path: String,
 ) -> Result<String, String> {
     require_valid_session(&state)?;
-    let key = require_file_key(&state)?;
     let password = { let g = state.password.lock().map_err(|e| e.to_string())?; g.clone().ok_or("No password in session")? };
-    logger::log("UNLOCK", &format!("unlock_folder start: {}", path));
-    let ul_path = path.clone();
-    let ul_key = key;
-    let count = tokio::task::spawn_blocking(move || file_locker::unlock_folder(&ul_path, &ul_key))
-        .await.map_err(|e| format!("Task join error: {e}"))?;
-    match count {
-        Ok(n) => logger::log("UNLOCK", &format!("unlock_folder ok: {} files decrypted in {}", n, path)),
-        Err(e) => { logger::log("UNLOCK", &format!("unlock_folder failed: {} err={}", path, e)); return Err(e); }
+    logger::log("UNLOCK", &format!("unlock_folder (filter): {}", path));
+
+    if let Err(e) = filter_client::remove_filter_path(&path) {
+        logger::log("UNLOCK", &format!("remove_filter_path failed: {}", e));
     }
-    let still_locked = file_locker::is_folder_locked(&path);
+    logger::log("UNLOCK", &format!("unlock_folder ok (filter): {}", path));
+
     cloud_status::set_lock_state(&path, false);
-    service_client::notify_unlock_item(&path, &password);
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
     config.locked_folders.retain(|f| f != &path);
     vault::encrypt_vault(config, &password).map_err(|e| e.to_string())?;
     process_guard::update_locked_folders(config.locked_folders.clone());
-    process_guard::notify_folder_locked(&path);
     save_locked_items_summary(config);
-    logger::log("UNLOCK", &format!("unlock_folder ok: {}", path));
-    if !still_locked { Ok("unlocked".to_string()) } else { Ok("unlock_failed".to_string()) }
+    Ok("unlocked".to_string())
 }
 
 #[tauri::command]
@@ -528,24 +524,45 @@ async fn cmd_rescue_unlock(
         Err(_) => false,
     };
     logger::log("RESCUE", &format!("rescue_unlock verify_lock={:?} is_locked={} path={}", verify_result, is_locked, path));
-    if !is_locked {
-        return Ok("not_locked".to_string());
+
+    // Always try to restore ACL first (we apply DENY ACE on lock)
+    let r_acl_path = path.clone();
+    let _ = tokio::task::spawn_blocking(move || file_locker::restore_acl(&r_acl_path)).await;
+
+    if is_locked {
+        // AES-encrypted lock — decrypt with file key
+        let r_path = path.clone();
+        let r_key = key;
+        tokio::task::spawn_blocking(move || file_locker::unlock_file(&r_path, &r_key))
+            .await.map_err(|e| format!("Task join error: {e}"))?
+            .map_err(|e| { logger::log("RESCUE", &format!("rescue_unlock unlock failed: {} err={}", path, e)); e })?;
+        logger::log("RESCUE", &format!("rescue_unlock unlock ok: {}", path));
+        let still_locked = file_locker::verify_lock(&path).unwrap_or(false);
+        if still_locked {
+            return Ok("failed".to_string());
+        }
+        service_client::notify_force_remove_locked_item(&path);
+        logger::log("RESCUE", &format!("rescue_unlock notified service: {}", path));
+        return Ok("rescued".to_string());
     }
 
+    // Not an AES lock — check for old ACL damage (SYSTEM owner) and force-unlock
+    logger::log("RESCUE", &format!("rescue_unlock: no AES lock, trying ACL force_unlock: {}", path));
     let r_path = path.clone();
-    let r_key = key;
-    tokio::task::spawn_blocking(move || file_locker::unlock_file(&r_path, &r_key))
-        .await.map_err(|e| format!("Task join error: {e}"))?
-        .map_err(|e| { logger::log("RESCUE", &format!("rescue_unlock unlock failed: {} err={}", path, e)); e })?;
-    logger::log("RESCUE", &format!("rescue_unlock unlock ok: {}", path));
-    let still_locked = file_locker::verify_lock(&path).unwrap_or(false);
-    logger::log("RESCUE", &format!("rescue_unlock still_locked={} path={}", still_locked, path));
-    if still_locked {
-        return Ok("failed".to_string());
+    let acl_result = tokio::task::spawn_blocking(move || file_locker::force_unlock(&r_path))
+        .await.map_err(|e| format!("Task join error: {e}"));
+    match acl_result {
+        Ok(Ok(())) => {
+            logger::log("RESCUE", &format!("rescue_unlock force_unlock ok: {}", path));
+            service_client::notify_force_remove_locked_item(&path);
+            Ok("rescued_acl".to_string())
+        }
+        Ok(Err(e)) => {
+            logger::log("RESCUE", &format!("rescue_unlock force_unlock failed: {} err={}", path, e));
+            Ok("not_locked".to_string())
+        }
+        Err(e) => Err(format!("Task join error: {e}")),
     }
-    service_client::notify_force_remove_locked_item(&path);
-    logger::log("RESCUE", &format!("rescue_unlock notified service: {}", path));
-    Ok("rescued".to_string())
 }
 
 #[tauri::command]
@@ -633,7 +650,7 @@ async fn cmd_relock_entries(
         } else if std::path::Path::new(path).is_dir() {
             let p = path.clone();
             let k = key.clone();
-            match tokio::task::spawn_blocking(move || file_locker::lock_folder(&p, &k))
+            match tokio::task::spawn_blocking(move || file_locker::lock_folder_as_container(&p, &k))
                 .await.map_err(|e| format!("Task join error: {e}"))? {
                 Ok(_) => "ok".to_string(),
                 Err(e) => e,
@@ -729,7 +746,7 @@ async fn cmd_toggle_locked_app(
         let k = key.clone();
         let _ = tokio::task::spawn_blocking(move || file_locker::unlock_file(&p, &k))
             .await.map_err(|e| format!("Task join error: {e}"))??;
-        service_client::notify_unlock_item(&app_path, &password);
+        let _ = service_client::notify_unlock_item(&app_path, &password);
     }
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
@@ -785,7 +802,7 @@ async fn cmd_remove_locked_app(
         let k = key.clone();
         let _ = tokio::task::spawn_blocking(move || file_locker::unlock_file(&p, &k))
             .await.map_err(|e| format!("Task join error: {e}"))??;
-        service_client::notify_unlock_item(&app_path, &password);
+        let _ = service_client::notify_unlock_item(&app_path, &password);
     }
     let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
     let config = config_guard.as_mut().ok_or("Session not unlocked")?;
@@ -1008,10 +1025,9 @@ async fn cmd_context_menu_lock(
     let password = { let g = state.password.lock().map_err(|e| e.to_string())?; g.clone().ok_or("No password in session")? };
     let p = std::path::Path::new(&path);
     if p.is_dir() {
-        let lp = path.clone();
-        let lk = key;
-        let n = tokio::task::spawn_blocking(move || file_locker::lock_folder(&lp, &lk))
-            .await.map_err(|e| format!("Task join error: {e}"))?.map_err(|e| e.to_string())?;
+        if let Err(e) = filter_client::add_filter_path(&path) {
+            return Err(format!("Failed to register with filter driver: {}. Is the driver loaded?", e));
+        }
         let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
         let config = config_guard.as_mut().ok_or("Session not unlocked")?;
         if !config.locked_folders.contains(&path) {
@@ -1020,7 +1036,7 @@ async fn cmd_context_menu_lock(
         vault::encrypt_vault(config, &password).map_err(|e| e.to_string())?;
         process_guard::update_locked_folders(config.locked_folders.clone());
         save_locked_items_summary(config);
-        Ok(format!("locked {} files in {}", n, path))
+        Ok(format!("locked folder (filter): {}", path))
     } else {
         let lp = path.clone();
         let lk = key;
@@ -1048,10 +1064,7 @@ async fn cmd_context_menu_unlock(
     let password = { let g = state.password.lock().map_err(|e| e.to_string())?; g.clone().ok_or("No password in session")? };
     let p = std::path::Path::new(&path);
     if p.is_dir() {
-        let up = path.clone();
-        let uk = key;
-        tokio::task::spawn_blocking(move || file_locker::unlock_folder(&up, &uk))
-            .await.map_err(|e| format!("Task join error: {e}"))?.map_err(|e| e.to_string())?;
+        let _ = filter_client::remove_filter_path(&path);
         let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
         let config = config_guard.as_mut().ok_or("Session not unlocked")?;
         config.locked_folders.retain(|f| f != &path);
@@ -1233,16 +1246,15 @@ fn cmd_widget_unlock(
     match target.target_type.as_str() {
         "file" => {
             file_locker::unlock_file(&target.target_id, &file_key)?;
-            service_client::notify_unlock_item(&target.target_id, &password);
+            let _ = service_client::notify_unlock_item(&target.target_id, &password);
         }
         "folder" => {
-            file_locker::unlock_folder(&target.target_id, &file_key)?;
-            service_client::notify_unlock_item(&target.target_id, &password);
-            process_guard::notify_folder_unlocked(&target.target_id);
+            let _ = filter_client::remove_filter_path(&target.target_id);
+            let _ = service_client::notify_unlock_item(&target.target_id, &password);
         }
         "app" => {
             file_locker::unlock_file(&target.target_id, &file_key)?;
-            service_client::notify_unlock_item(&target.target_id, &password);
+            let _ = service_client::notify_unlock_item(&target.target_id, &password);
             // Store for auto-relaunch after widget closes
             {
                 let mut relaunch = AUTO_RELAUNCH_APP.get_or_init(|| Mutex::new(None)).lock().map_err(|e| e.to_string())?;
@@ -1254,7 +1266,7 @@ fn cmd_widget_unlock(
                 .filter(|d| d.as_str() != target.target_id.as_str())
                 .cloned().collect();
             drive_locker::unlock_drive(&target.target_id, &remaining)?;
-            service_client::notify_unlock_item(&format!("{}:\\", target.target_id), &password);
+            let _ = service_client::notify_unlock_item(&format!("{}:\\", target.target_id), &password);
         }
         _ => return Err(format!("Unknown target type: {}", target.target_type)),
     }
@@ -1327,16 +1339,15 @@ async fn cmd_widget_unlock_biometric(
     match target.target_type.as_str() {
         "file" => {
             file_locker::unlock_file(&target.target_id, &file_key)?;
-            service_client::notify_unlock_item(&target.target_id, &password);
+            let _ = service_client::notify_unlock_item(&target.target_id, &password);
         }
         "folder" => {
             file_locker::unlock_folder(&target.target_id, &file_key)?;
-            service_client::notify_unlock_item(&target.target_id, &password);
-            process_guard::notify_folder_unlocked(&target.target_id);
+            let _ = service_client::notify_unlock_item(&target.target_id, &password);
         }
         "app" => {
             file_locker::unlock_file(&target.target_id, &file_key)?;
-            service_client::notify_unlock_item(&target.target_id, &password);
+            let _ = service_client::notify_unlock_item(&target.target_id, &password);
             {
                 let mut relaunch = AUTO_RELAUNCH_APP.get_or_init(|| Mutex::new(None)).lock().map_err(|e| e.to_string())?;
                 *relaunch = Some(target.target_id.clone());
@@ -1347,7 +1358,7 @@ async fn cmd_widget_unlock_biometric(
                 .filter(|d| d.as_str() != target.target_id.as_str())
                 .cloned().collect();
             drive_locker::unlock_drive(&target.target_id, &remaining)?;
-            service_client::notify_unlock_item(&format!("{}:\\", target.target_id), &password);
+            let _ = service_client::notify_unlock_item(&format!("{}:\\", target.target_id), &password);
         }
         _ => return Err(format!("Unknown target type: {}", target.target_type)),
     }
@@ -1396,6 +1407,57 @@ fn cmd_widget_list_locked() -> Result<Vec<UnlockTarget>, String> {
     let targets: Vec<UnlockTarget> = serde_json::from_str(&data)
         .map_err(|e| format!("Failed to parse locked items: {}", e))?;
     Ok(targets)
+}
+
+#[tauri::command]
+async fn cmd_filter_unlock(
+    state: State<'_, AppState>,
+    message_id: u32,
+    request_id: u64,
+    password: String,
+) -> Result<String, String> {
+    vault::decrypt_vault(&password).map_err(|_| "Incorrect password")?;
+    let mut config = vault::decrypt_vault(&password).map_err(|e| e.to_string())?;
+    if config.file_encryption_key.len() != 32 {
+        let mut k = vec![0u8; 32];
+        getrandom::getrandom(&mut k).map_err(|e| format!("Key gen: {e}"))?;
+        config.file_encryption_key = k;
+        vault::encrypt_vault(&config, &password)?;
+    }
+    let file_key = config.file_encryption_key.clone();
+    set_active_file_key(file_key.clone());
+    {
+        let mut fk = state.file_key.lock().map_err(|e| e.to_string())?;
+        *fk = Some(file_key);
+    }
+    let mut session_guard = state.session_token.lock().map_err(|e| e.to_string())?;
+    let now = std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).unwrap().as_secs();
+    *session_guard = Some(SessionToken { token: password.clone(), expires_at: now + 3600 });
+    drop(session_guard);
+    let mut password_guard = state.password.lock().map_err(|e| e.to_string())?;
+    *password_guard = Some(password);
+    let mut config_guard = state.vault_config.lock().map_err(|e| e.to_string())?;
+    *config_guard = Some(config);
+
+    filter_client::reply_to_driver(message_id, request_id, true)
+        .map_err(|e| format!("Driver reply failed: {}", e))?;
+
+    let mut queue = filter_client::get_pending_requests();
+    queue.lock().unwrap().retain(|r| r.request_id != request_id);
+
+    Ok("Access granted".to_string())
+}
+
+#[tauri::command]
+fn cmd_filter_deny(
+    message_id: u32,
+    request_id: u64,
+) -> Result<String, String> {
+    filter_client::reply_to_driver(message_id, request_id, false)
+        .map_err(|e| format!("Driver reply failed: {}", e))?;
+    let mut queue = filter_client::get_pending_requests();
+    queue.lock().unwrap().retain(|r| r.request_id != request_id);
+    Ok("Access denied".to_string())
 }
 
 #[tauri::command]
@@ -2002,6 +2064,8 @@ pub fn run() {
             cmd_widget_unlock,
             cmd_widget_unlock_biometric,
             cmd_widget_list_locked,
+            cmd_filter_unlock,
+            cmd_filter_deny,
             cmd_get_service_status,
             cmd_github_start_device_flow,
             cmd_github_poll_token,
@@ -2136,6 +2200,9 @@ pub fn run() {
                 logger::log("SERVICE", "service already running");
             }
 
+            filter_client::start_filter_thread(app.handle().clone());
+            logger::log("FILTER", "filter client thread started");
+
             // v0.0.36: purge legacy ACL-lock state from the service. Since v0.0.35
             // locking is encryption-based and the app never notifies the service
             // about new locks, anything still persisted there is from the old
@@ -2165,14 +2232,34 @@ pub fn run() {
                 logger::log("SETUP", &format!("register_innology_lock_extension failed: {e}"));
             }
 
-            // Handle --open-locked <path> argument: store the path so the unlock
-            // widget can be shown after the user logs in.
+            // Handle --open-locked <path> argument: show the unlock widget immediately
+            // (no full login required — the widget verifies the password itself).
             let args: Vec<String> = std::env::args().collect();
             if let Some(idx) = args.iter().position(|a| a == "--open-locked") {
                 if let Some(locked_path) = args.get(idx + 1) {
                     logger::log("SETUP", &format!("--open-locked arg: {}", locked_path));
-                    if let Ok(mut g) = PENDING_OPEN_LOCKED.get_or_init(|| Mutex::new(None)).lock() {
-                        *g = Some(locked_path.clone());
+                    let display = std::path::Path::new(locked_path)
+                        .file_name()
+                        .map(|n| n.to_string_lossy().trim_end_matches(".InnologyLock").to_string())
+                        .unwrap_or_else(|| locked_path.clone());
+                    // Detect if this is a folder container or a single file
+                    let target_type = if file_locker::is_folder_container(locked_path) {
+                        "folder".to_string()
+                    } else {
+                        "file".to_string()
+                    };
+                    let target = UnlockTarget {
+                        target_type,
+                        target_id: locked_path.clone(),
+                        display_name: display,
+                    };
+                    if let Ok(mut g) = UNLOCK_TARGET.get_or_init(|| Mutex::new(None)).lock() {
+                        *g = Some(target.clone());
+                    }
+                    if let Some(widget) = app.get_webview_window("widget") {
+                        let _ = widget.show();
+                        let _ = widget.set_focus();
+                        let _ = widget.emit("unlock-target", &target);
                     }
                 }
             }
@@ -2275,7 +2362,7 @@ pub fn run() {
                                 }
                                 "folder" => {
                                     if let Some(k) = &key {
-                                        let _ = file_locker::lock_folder(&target.target_id, k);
+                                        let _ = file_locker::lock_folder_as_container(&target.target_id, k);
                                     }
                                     process_guard::notify_folder_locked(&target.target_id);
                                 }

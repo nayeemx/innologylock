@@ -1,4 +1,4 @@
-Add-Type -AssemblyName System.Drawing
+﻿Add-Type -AssemblyName System.Drawing
 
 function New-IconPng {
     param([string]$path, [int]$size, [string]$color)
@@ -25,13 +25,13 @@ function New-IconPng {
 }
 
 $sizes = @(16, 24, 32, 48, 256)
-New-Item -ItemType Directory -Force -Path "D:\projects\code\omnilock\src-tauri\icons" | Out-Null
+New-Item -ItemType Directory -Force -Path "D:\projects\code\InnologyLock\src-tauri\icons" | Out-Null
 foreach ($s in $sizes) {
-    New-IconPng "D:\projects\code\omnilock\src-tauri\icons\lock_${s}.png" $s '#e63e3e'
+    New-IconPng "D:\projects\code\InnologyLock\src-tauri\icons\lock_${s}.png" $s '#e63e3e'
 }
 Write-Host "Generated lock icons"
 foreach ($s in $sizes) {
-    New-IconPng "D:\projects\code\omnilock\src-tauri\icons\unlock_${s}.png" $s '#22c55e'
+    New-IconPng "D:\projects\code\InnologyLock\src-tauri\icons\unlock_${s}.png" $s '#22c55e'
 }
 Write-Host "Generated unlock icons"
-Get-ChildItem "D:\projects\code\omnilock\src-tauri\icons" | ForEach-Object { "$($_.Name) - $($_.Length) bytes" }
+Get-ChildItem "D:\projects\code\InnologyLock\src-tauri\icons" | ForEach-Object { "$($_.Name) - $($_.Length) bytes" }

@@ -56,6 +56,27 @@ fn show_blob(path: &str) {
     unsafe { SetFileAttributesW(wide.as_ptr(), FILE_ATTRIBUTE_NORMAL); }
 }
 
+/// Hide a folder from Explorer (HIDDEN + SYSTEM). Explorer won't show it by default.
+pub fn hide_folder(path: &str) {
+    use std::os::windows::ffi::OsStrExt;
+    use std::ffi::OsStr;
+    use windows_sys::Win32::Storage::FileSystem::SetFileAttributesW;
+    const FILE_ATTRIBUTE_HIDDEN: u32 = 0x02;
+    const FILE_ATTRIBUTE_SYSTEM: u32 = 0x04;
+    let wide: Vec<u16> = OsStr::new(path).encode_wide().chain(std::iter::once(0)).collect();
+    unsafe { SetFileAttributesW(wide.as_ptr(), FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM); }
+}
+
+/// Unhide a folder (restore to NORMAL attributes).
+pub fn show_folder(path: &str) {
+    use std::os::windows::ffi::OsStrExt;
+    use std::ffi::OsStr;
+    use windows_sys::Win32::Storage::FileSystem::SetFileAttributesW;
+    const FILE_ATTRIBUTE_NORMAL: u32 = 0x80;
+    let wide: Vec<u16> = OsStr::new(path).encode_wide().chain(std::iter::once(0)).collect();
+    unsafe { SetFileAttributesW(wide.as_ptr(), FILE_ATTRIBUTE_NORMAL); }
+}
+
 /// Returns the path of the encrypted blob for a given original path.
 pub fn encrypted_path_for(path: &str) -> String {
     format!("{}.InnologyLock", path)
@@ -185,8 +206,176 @@ pub fn unlock_file(path: &str, key_material: &[u8]) -> Result<String, String> {
     Ok(original_path)
 }
 
+/// Lock a folder by converting it into a single `.InnologyLock` container file.
+///
+/// The folder and all its contents are serialized into a binary payload, encrypted
+/// with AES-256-GCM, and written as a single `.InnologyLock` file. The original
+/// folder is then deleted.
+///
+/// Payload layout (before encryption):
+///   [4]  file_count (u32 LE)
+///   For each file:
+///     [4]  rel_path_len (u32 LE)
+///     [N]  rel_path (UTF-8, relative to the locked folder)
+///     [4]  content_len (u32 LE)
+///     [M]  file content bytes
+///
+/// This means the folder CEASES TO EXIST as a folder — only a single encrypted
+/// file remains. Double-clicking the `.InnologyLock` file opens the unlock widget.
+pub fn lock_folder_as_container(path: &str, key_material: &[u8]) -> Result<String, String> {
+    check_protected_path(path)?;
+    let dir = Path::new(path);
+    if !dir.exists() || !dir.is_dir() {
+        return Err(format!("Folder does not exist: {path}"));
+    }
+    let folder_name = dir.file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
+    // Collect all files in the folder
+    let mut files: Vec<(String, Vec<u8>)> = Vec::new();
+    collect_files_recursive(dir, dir, &mut files)?;
+    if files.is_empty() {
+        return Err("Folder is empty — nothing to lock".to_string());
+    }
+
+    // Serialize: [4] file_count | for each: [4] rel_path_len | rel_path | [4] content_len | content
+    let mut payload = Vec::new();
+    payload.extend_from_slice(&(files.len() as u32).to_le_bytes());
+    for (rel_path, content) in &files {
+        let path_bytes = rel_path.as_bytes();
+        payload.extend_from_slice(&(path_bytes.len() as u32).to_le_bytes());
+        payload.extend_from_slice(path_bytes);
+        payload.extend_from_slice(&(content.len() as u32).to_le_bytes());
+        payload.extend_from_slice(content);
+    }
+
+    let (ciphertext, nonce) = do_encrypt(&payload, key_material)?;
+
+    // Container blob stores the folder name as the "original path" in the OLCK header
+    let container_path = format!("{}.InnologyLock", path);
+    write_blob(&container_path, &nonce, &folder_name, &ciphertext)?;
+
+    // Delete the original folder
+    fs::remove_dir_all(path).map_err(|e| format!("Cannot remove original folder after encrypt: {e}"))?;
+
+    // Do NOT hide the container — the user needs to see it in Explorer to double-click and unlock.
+    crate::logger::log("LOCK", &format!(
+        "lock_folder_as_container: {} -> {} ({} files)",
+        path, container_path, files.len()
+    ));
+    Ok(container_path)
+}
+
+/// Recursively collect all files under `base`, storing (relative_path, content).
+fn collect_files_recursive(base: &Path, dir: &Path, out: &mut Vec<(String, Vec<u8>)>) -> Result<(), String> {
+    let entries = fs::read_dir(dir).map_err(|e| format!("Cannot read dir {}: {e}", dir.display()))?;
+    for entry in entries.flatten() {
+        let p = entry.path();
+        if p.symlink_metadata().map(|m| m.file_type().is_symlink()).unwrap_or(false) {
+            continue;
+        }
+        if p.is_dir() {
+            collect_files_recursive(base, &p, out)?;
+        } else if p.is_file() {
+            let rel = p.strip_prefix(base)
+                .map(|r| r.to_string_lossy().to_string())
+                .unwrap_or_else(|_| p.file_name().unwrap_or_default().to_string_lossy().to_string());
+            let content = fs::read(&p).map_err(|e| format!("Cannot read {}: {e}", p.display()))?;
+            out.push((rel, content));
+        }
+    }
+    Ok(())
+}
+
+/// Unlock a folder container `.InnologyLock` file — restore the original folder.
+///
+/// The blob header stores the folder name. The ciphertext contains the serialized
+/// file tree. This function decrypts the payload, recreates the folder structure,
+/// writes all files, and deletes the `.InnologyLock` blob.
+pub fn unlock_folder_from_container(blob_path: &str, key_material: &[u8]) -> Result<String, String> {
+    let blob = Path::new(blob_path);
+    if !blob.exists() {
+        return Err(format!("Container file does not exist: {blob_path}"));
+    }
+
+    let (nonce, folder_name, ciphertext) = read_blob(blob_path)?;
+    let payload = do_decrypt(&ciphertext, key_material, &nonce)?;
+
+    // Parse payload: [4] file_count | for each: [4] rel_path_len | rel_path | [4] content_len | content
+    if payload.len() < 4 {
+        return Err("Container payload too short".to_string());
+    }
+    let file_count = u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]) as usize;
+    let mut offset = 4usize;
+    let mut files: Vec<(String, Vec<u8>)> = Vec::with_capacity(file_count);
+
+    for _ in 0..file_count {
+        if offset + 4 > payload.len() { return Err("Container truncated (path len)".to_string()); }
+        let plen = u32::from_le_bytes([payload[offset], payload[offset+1], payload[offset+2], payload[offset+3]]) as usize;
+        offset += 4;
+        if offset + plen > payload.len() { return Err("Container truncated (path)".to_string()); }
+        let rel_path = String::from_utf8(payload[offset..offset+plen].to_vec())
+            .map_err(|_| "Invalid UTF-8 in container path".to_string())?;
+        offset += plen;
+        if offset + 4 > payload.len() { return Err("Container truncated (content len)".to_string()); }
+        let clen = u32::from_le_bytes([payload[offset], payload[offset+1], payload[offset+2], payload[offset+3]]) as usize;
+        offset += 4;
+        if offset + clen > payload.len() { return Err("Container truncated (content)".to_string()); }
+        let content = payload[offset..offset+clen].to_vec();
+        offset += clen;
+        files.push((rel_path, content));
+    }
+
+    // Determine the parent directory of the .InnologyLock file
+    let parent = blob.parent().unwrap_or(Path::new("."));
+    // The restored folder goes next to the blob: e.g. parent/MyFolder
+    let restore_dir = parent.join(&folder_name);
+
+    if restore_dir.exists() {
+        return Err(format!(
+            "Refusing to restore: {} already exists. Move or delete it first.",
+            restore_dir.display()
+        ));
+    }
+
+    // Recreate folder structure and write files
+    for (rel_path, content) in &files {
+        let file_path = restore_dir.join(rel_path);
+        if let Some(parent_dir) = file_path.parent() {
+            fs::create_dir_all(parent_dir)
+                .map_err(|e| format!("Cannot create dir {}: {e}", parent_dir.display()))?;
+        }
+        fs::write(&file_path, content)
+            .map_err(|e| format!("Cannot write {}: {e}", file_path.display()))?;
+    }
+
+    // Delete the .InnologyLock blob
+    fs::remove_file(blob)
+        .map_err(|e| format!("Cannot remove container blob: {e}"))?;
+
+    crate::logger::log("UNLOCK", &format!(
+        "unlock_folder_from_container: {} -> {} ({} files)",
+        blob_path, restore_dir.display(), files.len()
+    ));
+    Ok(restore_dir.to_string_lossy().to_string())
+}
+
+/// Detect if a `.InnologyLock` blob is a folder container.
+/// The stored "original path" is just a folder name (no path separators, no extension).
+pub fn is_folder_container(blob_path: &str) -> bool {
+    if let Ok((_nonce, original_path, _ct)) = read_blob(blob_path) {
+        // A folder name has no path separators and typically no file extension
+        !original_path.contains('/') && !original_path.contains('\\')
+            && Path::new(&original_path).extension().is_none()
+    } else {
+        false
+    }
+}
+
 /// Lock all files inside a folder recursively. The folder itself stays visible.
 /// Returns the number of files encrypted.
+#[allow(dead_code)] // kept for legacy per-file folder locks
 pub fn lock_folder(path: &str, key_material: &[u8]) -> Result<usize, String> {
     check_protected_path(path)?;
     let dir = Path::new(path);
@@ -198,9 +387,25 @@ pub fn lock_folder(path: &str, key_material: &[u8]) -> Result<usize, String> {
     Ok(count)
 }
 
-/// Decrypt all .InnologyLock files inside a folder recursively.
-/// Returns the number of files decrypted.
+/// Decrypt a locked folder. Supports two modes:
+/// 1. Container blob: a single `.InnologyLock` file (was a folder) → restore folder
+/// 2. Legacy per-file: folder containing `.InnologyLock` blobs → decrypt each
+///
+/// Returns the number of files decrypted (or 1 for container restore).
 pub fn unlock_folder(path: &str, key_material: &[u8]) -> Result<usize, String> {
+    // Check if this path IS a .InnologyLock container (user might pass the blob path)
+    let blob_path = if Path::new(path).extension().map(|e| e == "InnologyLock").unwrap_or(false) {
+        path.to_string()
+    } else {
+        format!("{}.InnologyLock", path)
+    };
+
+    if Path::new(&blob_path).exists() && is_folder_container(&blob_path) {
+        unlock_folder_from_container(&blob_path, key_material)?;
+        return Ok(1);
+    }
+
+    // Legacy per-file mode
     let dir = Path::new(path);
     if !dir.exists() || !dir.is_dir() {
         return Err(format!("Folder does not exist: {path}"));
@@ -210,8 +415,13 @@ pub fn unlock_folder(path: &str, key_material: &[u8]) -> Result<usize, String> {
     Ok(count)
 }
 
-/// True when the folder contains at least one .InnologyLock file (i.e. is locked).
+/// True when the folder is locked — either a container blob exists, or
+/// the folder contains .InnologyLock files.
 pub fn is_folder_locked(path: &str) -> bool {
+    let container = format!("{}.InnologyLock", path);
+    if Path::new(&container).exists() && !Path::new(path).exists() {
+        return true; // container mode: folder replaced by blob
+    }
     Path::new(path).is_dir() && dir_has_innology_lock(Path::new(path))
 }
 
@@ -282,6 +492,11 @@ fn decrypt_dir_recursive(dir: &Path, key: &[u8]) -> Result<usize, String> {
 pub fn verify_lock(path: &str) -> Result<bool, String> {
     // Encryption-based lock: .InnologyLock file exists, original gone
     if is_file_locked(path) {
+        return Ok(true);
+    }
+    // Container lock: folder was replaced by .InnologyLock blob
+    let container = format!("{}.InnologyLock", path);
+    if Path::new(&container).exists() && !Path::new(path).exists() {
         return Ok(true);
     }
     // Folder lock: contains .InnologyLock files
@@ -609,4 +824,147 @@ pub fn bulk_recover_acl(paths: &[String]) -> Vec<(String, String)> {
             Err(e) => (p.clone(), e),
         }
     }).collect()
+}
+
+// ── Safe ACL deny for folder blocking ────────────────────────────────
+
+fn acl_backup_dir() -> std::path::PathBuf {
+    let base = std::env::var("PROGRAMDATA")
+        .unwrap_or_else(|_| r"C:\ProgramData".to_string());
+    std::path::PathBuf::from(base).join("InnologyBD").join("InnologyLock").join("acl_backups")
+}
+
+fn acl_backup_path_for(path: &str) -> std::path::PathBuf {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    path.hash(&mut hasher);
+    let hex = format!("{:016x}", hasher.finish());
+    acl_backup_dir().join(format!("{}.bin", hex))
+}
+
+/// Save current DACL to backup file before applying DENY.
+fn save_dacl_backup(path: &str) -> Result<(), String> {
+    unsafe {
+        let path_wide = to_wide(path);
+        let mut sd: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
+        let ret = GetNamedSecurityInfoW(
+            path_wide.as_ptr(), SE_FILE_OBJECT,
+            OWNER_SECURITY_INFORMATION | DACL_SECURITY_INFORMATION,
+            std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut(),
+            &mut sd,
+        );
+        if ret != 0 { return Err(format!("GetNamedSecurityInfoW failed: err={}", ret)); }
+
+        let mut owner_sid: PSID = std::ptr::null_mut();
+        let mut owner_defaulted: i32 = 0;
+        GetSecurityDescriptorOwner(sd, &mut owner_sid, &mut owner_defaulted);
+
+        let mut dacl_present: i32 = 0;
+        let mut dacl: *mut ACL = std::ptr::null_mut();
+        let mut dacl_defaulted: i32 = 0;
+        GetSecurityDescriptorDacl(sd, &mut dacl_present, &mut dacl, &mut dacl_defaulted);
+
+        let owner_bytes = if !owner_sid.is_null() {
+            let sub_count = *((owner_sid as *const u8).offset(1));
+            let len = 8 + (sub_count as usize) * 4;
+            std::slice::from_raw_parts(owner_sid as *const u8, len).to_vec()
+        } else { Vec::new() };
+
+        let dacl_bytes = if dacl_present != 0 && !dacl.is_null() {
+            let dacl_size = (*dacl).AclSize as usize;
+            std::slice::from_raw_parts(dacl as *const u8, dacl_size).to_vec()
+        } else { Vec::new() };
+
+        LocalFree(sd as *mut _);
+
+        let dir = acl_backup_dir();
+        std::fs::create_dir_all(&dir).map_err(|e| format!("Cannot create backup dir: {}", e))?;
+        let bp = acl_backup_path_for(path);
+        let mut data = Vec::with_capacity(4 + owner_bytes.len() + dacl_bytes.len());
+        data.extend_from_slice(&(owner_bytes.len() as u32).to_le_bytes());
+        data.extend_from_slice(&owner_bytes);
+        data.extend_from_slice(&dacl_bytes);
+        std::fs::write(&bp, &data).map_err(|e| format!("Cannot write DACL backup: {}", e))
+    }
+}
+
+/// Restore DACL from backup file.
+fn restore_dacl_from_backup(path: &str) -> Result<(), String> {
+    let bp = acl_backup_path_for(path);
+    if !bp.exists() { return Err(format!("No DACL backup for {}", path)); }
+    let data = std::fs::read(&bp).map_err(|e| format!("Cannot read backup: {}", e))?;
+    if data.len() < 4 { return Err("Backup too short".to_string()); }
+    let owner_len = u32::from_le_bytes([data[0], data[1], data[2], data[3]]) as usize;
+    if data.len() < 4 + owner_len { return Err("Backup truncated".to_string()); }
+    let owner_bytes = &data[4..4 + owner_len];
+    let dacl_bytes = &data[4 + owner_len..];
+
+    unsafe {
+        let path_wide = to_wide(path);
+        let _ = enable_privilege("SeTakeOwnershipPrivilege");
+        let _ = enable_privilege("SeRestorePrivilege");
+        if !owner_bytes.is_empty() {
+            let owner_sid = owner_bytes.as_ptr() as PSID;
+            SetNamedSecurityInfoW(path_wide.as_ptr(), SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION,
+                owner_sid, std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut());
+        }
+        if !dacl_bytes.is_empty() {
+            let dacl_ptr = dacl_bytes.as_ptr() as *mut ACL;
+            let ret = SetNamedSecurityInfoW(path_wide.as_ptr(), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION,
+                std::ptr::null_mut(), std::ptr::null_mut(), dacl_ptr, std::ptr::null_mut());
+            if ret != 0 { return Err(format!("Restore DACL failed: err={}", ret)); }
+        }
+    }
+    let _ = std::fs::remove_file(&bp);
+    Ok(())
+}
+
+/// Apply a DENY ACE for the current user on a folder (blocks Explorer entry).
+/// Saves DACL backup first so it can always be restored.
+pub fn apply_deny_acl(path: &str) -> Result<(), String> {
+    if !Path::new(path).exists() { return Err(format!("Path does not exist: {}", path)); }
+    if acl_backup_path_for(path).exists() { return Ok(()); }
+    save_dacl_backup(path)?;
+    unsafe {
+        let path_wide = to_wide(path);
+        let buf = current_user_sid_buf()?;
+        let token_user = &*(buf.as_ptr() as *const TOKEN_USER);
+        let mut deny_ea: EXPLICIT_ACCESS_W = std::mem::zeroed();
+        deny_ea.grfAccessPermissions = GENERIC_ALL;
+        deny_ea.grfAccessMode = DENY_ACCESS;
+        deny_ea.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
+        deny_ea.Trustee.TrusteeForm = TRUSTEE_IS_SID;
+        deny_ea.Trustee.TrusteeType = TRUSTEE_IS_USER;
+        deny_ea.Trustee.ptstrName = token_user.User.Sid as *mut u16;
+        let mut existing_dacl: *mut ACL = std::ptr::null_mut();
+        let mut dacl_present: i32 = 0;
+        let mut dacl_defaulted: i32 = 0;
+        let mut sd: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
+        let ret = GetNamedSecurityInfoW(path_wide.as_ptr(), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION,
+            std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut(), &mut sd);
+        if ret != 0 { return Err(format!("GetNamedSecurityInfoW failed: err={}", ret)); }
+        if !sd.is_null() {
+            GetSecurityDescriptorDacl(sd, &mut dacl_present, &mut existing_dacl, &mut dacl_defaulted);
+        }
+        let mut new_dacl: *mut ACL = std::ptr::null_mut();
+        let acl_ref = if dacl_present != 0 && !existing_dacl.is_null() { existing_dacl as *const ACL } else { std::ptr::null() };
+        let ret = SetEntriesInAclW(1, &mut deny_ea, acl_ref, &mut new_dacl);
+        if !sd.is_null() { LocalFree(sd as *mut _); }
+        if ret != 0 { return Err(format!("SetEntriesInAclW failed: {}", ret)); }
+        let ret = SetNamedSecurityInfoW(path_wide.as_ptr(), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION,
+            std::ptr::null_mut(), std::ptr::null_mut(), new_dacl, std::ptr::null_mut());
+        LocalFree(new_dacl as *mut _);
+        if ret != 0 {
+            let _ = restore_dacl_from_backup(path);
+            return Err(format!("SetNamedSecurityInfoW (deny) failed: err={}", ret));
+        }
+    }
+    Ok(())
+}
+
+/// Restore the original DACL (removes the DENY ACE).
+pub fn restore_acl(path: &str) -> Result<(), String> {
+    if !Path::new(path).exists() { return Err(format!("Path does not exist: {}", path)); }
+    restore_dacl_from_backup(path)
 }

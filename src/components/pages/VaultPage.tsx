@@ -1,15 +1,14 @@
 ﻿import { useState, useEffect, useRef } from "react";
 import {
   HardDrive, Folder, FileLock2, Lock, Unlock, Loader2, FolderOpen, FileSearch, Search, ShieldAlert,
-  Download, Upload, FileJson, Archive, Trash2,
+  Download, Upload, FileJson,
 } from "lucide-react";
 import {
   listDrives, addLockedDrive, removeLockedDrive,
   addLockedFolder, removeLockedFolder, addLockedFile, removeLockedFile,
   pickFolder, pickFile, rescueUnlock,
   exportConfig, importConfig,
-  vaultStoreFile, vaultListFiles, vaultExtractFile, vaultDeleteFile,
-  type VaultConfigDto, type VaultFileInfo,
+  type VaultConfigDto,
 } from "../../lib/tauri-bridge";
 import { SectionHeader } from "../shared/SectionHeader";
 
@@ -21,91 +20,18 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
   const [lockingPath, setLockingPath] = useState<string | null>(null);
   const [pathSearch, setPathSearch] = useState("");
   const [rescueLoading, setRescueLoading] = useState(false);
-  const [rescuePath, setRescuePath] = useState("");
   const importRef = useRef<HTMLInputElement>(null);
-  const [vaultFiles, setVaultFiles] = useState<VaultFileInfo[]>([]);
-  const [vaultFilesLoading, setVaultFilesLoading] = useState(false);
-  const [storingFile, setStoringFile] = useState(false);
-  const [busyFileId, setBusyFileId] = useState<string | null>(null);
 
   useEffect(() => {
     listDrives().then(setDrives).catch(e => setError("Failed to list drives: " + e));
   }, []);
-
-  useEffect(() => {
-    setVaultFilesLoading(true);
-    vaultListFiles()
-      .then(setVaultFiles)
-      .catch(() => setVaultFiles([]))
-      .finally(() => setVaultFilesLoading(false));
-  }, []);
-
-  const refreshVaultFiles = async () => {
-    try {
-      const files = await vaultListFiles();
-      setVaultFiles(files);
-    } catch (e) {
-      setError("Failed to list vault files: " + e);
-    }
-  };
-
-  const formatBytes = (n: number) => {
-    if (n < 1024) return `${n} B`;
-    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-    if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-  };
-
-  const formatDate = (ts: number) => new Date(ts * 1000).toLocaleString();
-
-  const handleStoreFile = async () => {
-    clearMessages();
-    try {
-      const path = await pickFile();
-      if (!path) return;
-      setStoringFile(true);
-      const info = await vaultStoreFile(path);
-      setSuccess(`"${info.name}" added to vault storage (${formatBytes(info.size)}). The original file was removed from its location.`);
-      await refreshVaultFiles();
-    } catch (e: any) {
-      setError("Failed to add file to vault: " + e);
-    }
-    setStoringFile(false);
-  };
-
-  const handleExtractFile = async (file: VaultFileInfo) => {
-    clearMessages();
-    try {
-      const destDir = await pickFolder();
-      if (!destDir) return;
-      setBusyFileId(file.id);
-      const dest = await vaultExtractFile(file.id, destDir);
-      setSuccess(`Extracted "${file.name}" to ${dest}`);
-      await refreshVaultFiles();
-    } catch (e: any) {
-      setError("Extract failed: " + e);
-    }
-    setBusyFileId(null);
-  };
-
-  const handleDeleteFile = async (file: VaultFileInfo) => {
-    clearMessages();
-    setBusyFileId(file.id);
-    try {
-      await vaultDeleteFile(file.id);
-      setSuccess(`Removed "${file.name}" from vault storage.`);
-      await refreshVaultFiles();
-    } catch (e: any) {
-      setError("Delete failed: " + e);
-    }
-    setBusyFileId(null);
-  };
 
   const lockedDrives = config?.locked_drives || [];
   const lockedFolders = config?.locked_folders || [];
   const lockedFiles = config?.locked_files || [];
   const filteredFolders = lockedFolders.filter(f => f.toLowerCase().includes(pathSearch.toLowerCase()));
   const filteredFiles = lockedFiles.filter(f => f.toLowerCase().includes(pathSearch.toLowerCase()));
+  const totalLocked = lockedFolders.length + lockedFiles.length;
 
   const clearMessages = () => { setError(""); setSuccess(""); };
 
@@ -136,9 +62,9 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
       setLockingPath(path);
       const result = await addLockedFolder(path);
       if (result === "locked_unverified") {
-        setSuccess(`Folder locked (unverified â€” may require admin): ${path}`);
+        setSuccess(`Folder locked (unverified — may require admin): ${path}`);
       } else {
-        setSuccess(`Folder locked & verified: ${path}`);
+        setSuccess(`Folder locked: ${path}`);
       }
       await refresh();
     } catch (e: any) {
@@ -155,9 +81,9 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
       setLockingPath(path);
       const result = await addLockedFile(path);
       if (result === "locked_unverified") {
-        setSuccess(`File locked (unverified â€” may require admin): ${path}`);
+        setSuccess(`File locked (unverified — may require admin): ${path}`);
       } else {
-        setSuccess(`File locked & verified: ${path}`);
+        setSuccess(`File locked: ${path}`);
       }
       await refresh();
     } catch (e: any) {
@@ -176,13 +102,13 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
         result = await removeLockedFile(path);
       }
       if (result === "unlock_failed") {
-        setError(`Unlock failed for ${path} - Windows ACL may still be blocking access. Try running as Administrator.`);
+        setError(`Unlock failed for ${path}. Try running as Administrator.`);
       } else {
-        setSuccess(`Path unlocked: ${path}`);
+        setSuccess(`Unlocked: ${path}`);
       }
       await refresh();
     } catch (e: any) {
-      setError("Failed to unlock path: " + e);
+      setError("Failed to unlock: " + e);
       await refresh();
     }
   };
@@ -192,13 +118,12 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
     try {
       const path = await pickFolder();
       if (!path) return;
-      setRescuePath(path);
       setRescueLoading(true);
       const result = await rescueUnlock(path);
-      if (result === "rescued") {
-        setSuccess(`Rescued! ACL removed: ${path}`);
+      if (result === "rescued" || result === "rescued_acl") {
+        setSuccess(`Rescued: ${path}`);
       } else if (result === "not_locked") {
-        setSuccess(`Path is not locked: ${path}`);
+        setSuccess(`Not locked: ${path}`);
       } else {
         setError(`Rescue failed for ${path}. Try running as Administrator.`);
       }
@@ -213,13 +138,12 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
     try {
       const path = await pickFile();
       if (!path) return;
-      setRescuePath(path);
       setRescueLoading(true);
       const result = await rescueUnlock(path);
-      if (result === "rescued") {
-        setSuccess(`Rescued! ACL removed: ${path}`);
+      if (result === "rescued" || result === "rescued_acl") {
+        setSuccess(`Rescued: ${path}`);
       } else if (result === "not_locked") {
-        setSuccess(`Path is not locked: ${path}`);
+        setSuccess(`Not locked: ${path}`);
       } else {
         setError(`Rescue failed for ${path}. Try running as Administrator.`);
       }
@@ -232,14 +156,15 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <SectionHeader
-        eyebrow="FR-FILE Â· AES-256-GCM"
-        title="File, Folder & Drive Vault"
-        subtitle="Lock files and folders with AES-256-GCM encryption. Locked items become invisible .InnologyLock blobs in Explorer."
+        eyebrow="FR-FILE · AES-256-GCM"
+        title="Lock Files & Folders"
+        subtitle="Lock files and folders with AES-256-GCM encryption. Locked folders become a single .InnologyLock file — double-click to unlock. Locked files become hidden .InnologyLock blobs."
       />
 
       {error && <div className="p-3 rounded-lg bg-[color:var(--destructive)]/15 border border-[color:var(--destructive)]/30 text-sm text-[color:var(--destructive)]">{error}</div>}
       {success && <div className="p-3 rounded-lg bg-[color:var(--success)]/15 border border-[color:var(--success)]/30 text-sm text-[color:var(--success)]">{success}</div>}
 
+      {/* ── Drives ── */}
       <div>
         <h3 className="text-sm uppercase tracking-widest text-[color:var(--muted-foreground)] mb-3">Drive Volumes</h3>
         <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -268,7 +193,7 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
                     {lockingDrive === letter ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
                     {isLocked ? "Unlock" : "Lock"}
                   </button>
-                  <span className={isLocked ? "text-[color:var(--primary)]" : ""}>{isLocked ? "Hidden" : "Unprotected"}</span>
+                  <span className={isLocked ? "text-[color:var(--primary)]" : ""}>{isLocked ? "Hidden" : "Open"}</span>
                 </div>
               </div>
             );
@@ -276,23 +201,24 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
         </div>
       </div>
 
+      {/* ── Locked Files & Folders ── */}
       <div className="glass rounded-2xl overflow-hidden">
-        <div className="p-5 border-b border-[color:var(--border)] flex items-center gap-3">
+        <div className="p-5 border-b border-[color:var(--border)] flex flex-wrap items-center gap-3">
           <FileLock2 className="w-5 h-5 text-[color:var(--primary)]" />
-          <h3 className="font-semibold">Protected Paths</h3>
-          <span className="text-xs text-[color:var(--muted-foreground)]">{lockedFolders.length + lockedFiles.length} entries</span>
+          <h3 className="font-semibold">Locked Items</h3>
+          <span className="text-xs text-[color:var(--muted-foreground)]">{totalLocked} locked</span>
           <div className="ml-auto flex items-center gap-2">
-            {(lockedFolders.length + lockedFiles.length) > 0 && (
+            {totalLocked > 0 && (
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface border border-surface-border">
                 <Search className="w-3.5 h-3.5 text-[color:var(--muted-foreground)]" />
-                <input placeholder="Search paths..." value={pathSearch} onChange={e => setPathSearch(e.target.value)}
+                <input placeholder="Search..." value={pathSearch} onChange={e => setPathSearch(e.target.value)}
                        className="bg-transparent outline-none text-xs w-32 placeholder:text-[color:var(--muted-foreground)]" />
               </div>
             )}
             <button onClick={handlePickFolder} disabled={lockingPath !== null}
                     className="px-3 py-2 rounded-lg text-sm bg-surface border border-surface-border flex items-center gap-2 hover:bg-surface-active disabled:opacity-40">
               {lockingPath ? <Loader2 className="w-4 h-4 animate-spin" /> : <FolderOpen className="w-4 h-4" />}
-              {lockingPath ? "Locking..." : "Add Folder"}
+              {lockingPath ? "Locking..." : "Lock Folder"}
             </button>
             <button onClick={handlePickFile} disabled={lockingPath !== null}
                     className="px-3 py-2 rounded-lg text-sm font-medium text-[color:var(--primary-foreground)] flex items-center gap-2 glow-cyan disabled:opacity-40"
@@ -310,7 +236,7 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
               </div>
               <div className="flex-1 min-w-0">
                 <code className="text-sm">{f}</code>
-                <div className="text-xs text-[color:var(--muted-foreground)] mt-0.5">Folder Â· <span className="text-[color:var(--success)]">ENCRYPTED</span></div>
+                <div className="text-xs text-[color:var(--muted-foreground)] mt-0.5">Folder · <span className="text-[color:var(--success)]">ENCRYPTED</span></div>
               </div>
               <button onClick={() => handleRemovePath(f, "folder")} disabled={lockingPath === f}
                       className="px-3 py-1.5 rounded-lg text-xs border border-[color:var(--primary)]/30 text-[color:var(--primary)] hover:bg-[color:var(--primary)]/10 flex items-center gap-1.5 disabled:opacity-40">
@@ -326,7 +252,7 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
               </div>
               <div className="flex-1 min-w-0">
                 <code className="text-sm">{f}</code>
-                <div className="text-xs text-[color:var(--muted-foreground)] mt-0.5">File Â· <span className="text-[color:var(--success)]">ENCRYPTED</span></div>
+                <div className="text-xs text-[color:var(--muted-foreground)] mt-0.5">File · <span className="text-[color:var(--success)]">ENCRYPTED</span></div>
               </div>
               <button onClick={() => handleRemovePath(f, "file")} disabled={lockingPath === f}
                       className="px-3 py-1.5 rounded-lg text-xs border border-[color:var(--primary)]/30 text-[color:var(--primary)] hover:bg-[color:var(--primary)]/10 flex items-center gap-1.5 disabled:opacity-40">
@@ -335,101 +261,55 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
               </button>
             </div>
           ))}
-          {lockedFolders.length === 0 && lockedFiles.length === 0 && (
+          {totalLocked === 0 && (
             <div className="p-8 text-center text-[color:var(--muted-foreground)] text-sm">
-              No paths locked yet. Click "Add Folder" or "Lock File" to get started.
+              Nothing locked. Click "Lock Folder" or "Lock File" to get started.
             </div>
           )}
-          {pathSearch && filteredFolders.length === 0 && filteredFiles.length === 0 && lockedFolders.length + lockedFiles.length > 0 && (
+          {pathSearch && filteredFolders.length === 0 && filteredFiles.length === 0 && totalLocked > 0 && (
             <div className="p-8 text-center text-[color:var(--muted-foreground)] text-sm">
-              No paths match "{pathSearch}".
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="glass rounded-2xl overflow-hidden">
-        <div className="p-5 border-b border-[color:var(--border)] flex items-center gap-3">
-          <Archive className="w-5 h-5 text-[color:var(--primary)]" />
-          <h3 className="font-semibold">Vault Storage</h3>
-          <span className="text-xs text-[color:var(--muted-foreground)]">Private encrypted file storage</span>
-          <div className="ml-auto">
-            <button onClick={handleStoreFile} disabled={storingFile}
-                    className="px-3 py-2 rounded-lg text-sm font-medium text-[color:var(--primary-foreground)] flex items-center gap-2 glow-cyan disabled:opacity-40"
-                    style={{ background: "var(--gradient-brand)" }}>
-              {storingFile ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-              {storingFile ? "Storing..." : "Add File to Vault"}
-            </button>
-          </div>
-        </div>
-        <div className="divide-y divide-surface-border">
-          {vaultFiles.map(f => (
-            <div key={f.id} className="px-5 py-4 flex items-center gap-4">
-              <div className="w-10 h-10 rounded-lg grid place-items-center bg-surface border border-surface-border">
-                <Archive className="w-4 h-4 text-[color:var(--violet)]" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium truncate">{f.name}</div>
-                <div className="text-xs text-[color:var(--muted-foreground)] mt-0.5">
-                  {formatBytes(f.size)} Â· Added {formatDate(f.added_at)}
-                </div>
-              </div>
-              <button onClick={() => handleExtractFile(f)} disabled={busyFileId === f.id}
-                      className="px-3 py-1.5 rounded-lg text-xs border border-[color:var(--primary)]/30 text-[color:var(--primary)] hover:bg-[color:var(--primary)]/10 flex items-center gap-1.5 disabled:opacity-40">
-                {busyFileId === f.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
-                {busyFileId === f.id ? "Extracting..." : "Extract"}
-              </button>
-              <button onClick={() => handleDeleteFile(f)} disabled={busyFileId === f.id}
-                      className="px-3 py-1.5 rounded-lg text-xs border border-surface-border text-[color:var(--muted-foreground)] hover:text-[color:var(--destructive)] hover:border-[color:var(--destructive)]/40 flex items-center gap-1.5 disabled:opacity-40">
-                {busyFileId === f.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
-                {busyFileId === f.id ? "..." : "Delete"}
-              </button>
-            </div>
-          ))}
-          {vaultFiles.length === 0 && (
-            <div className="p-8 text-center text-[color:var(--muted-foreground)] text-sm">
-              {vaultFilesLoading ? "Loading..." : "No files stored yet. Add a file to keep it encrypted inside the vault â€” the original is removed from its location."}
+              No results for "{pathSearch}".
             </div>
           )}
         </div>
       </div>
 
+      {/* ── Rescue ── */}
       <div className="glass rounded-2xl overflow-hidden border-[color:var(--destructive)]/20">
         <div className="p-5 border-b border-[color:var(--border)] flex items-center gap-3">
           <ShieldAlert className="w-5 h-5 text-[color:var(--destructive)]" />
-          <h3 className="font-semibold">Rescue Mode</h3>
-          <span className="text-xs text-[color:var(--muted-foreground)]">Unlock files/folders not in the vault</span>
+          <div>
+            <h3 className="font-semibold">Rescue Mode</h3>
+            <p className="text-xs text-[color:var(--muted-foreground)]">Unlock a file that isn't in the list above</p>
+          </div>
         </div>
         <div className="p-5">
           <p className="text-sm text-[color:var(--muted-foreground)] mb-4">
-            If a file or folder is locked but no longer appears in the vault (e.g. after reinstall), use this to unlock it. Select the locked item and InnologyLock will restore normal permissions.
+            If you have a .InnologyLock file that isn't tracked by the app (e.g. after a reinstall), select it here to unlock.
           </p>
           <div className="flex items-center gap-3">
             <button onClick={handleRescuePickFolder} disabled={rescueLoading}
                     className="px-4 py-2 rounded-lg text-sm bg-surface border border-surface-border flex items-center gap-2 hover:bg-surface-active disabled:opacity-40">
               {rescueLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FolderOpen className="w-4 h-4" />}
-              {rescueLoading ? "Rescuing..." : "Select Folder"}
+              {rescueLoading ? "Working..." : "Select Folder"}
             </button>
             <button onClick={handleRescuePickFile} disabled={rescueLoading}
                     className="px-4 py-2 rounded-lg text-sm font-medium text-[color:var(--primary-foreground)] flex items-center gap-2 glow-cyan disabled:opacity-40"
                     style={{ background: "var(--gradient-brand)" }}>
               {rescueLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSearch className="w-4 h-4" />}
-              {rescueLoading ? "Rescuing..." : "Select File"}
+              {rescueLoading ? "Working..." : "Select File"}
             </button>
           </div>
         </div>
       </div>
 
+      {/* ── Import / Export ── */}
       <div className="glass rounded-2xl overflow-hidden">
         <div className="p-5 border-b border-[color:var(--border)] flex items-center gap-3">
           <FileJson className="w-5 h-5 text-[color:var(--primary)]" />
-          <h3 className="font-semibold">Bulk Import / Export</h3>
-          <span className="text-xs text-[color:var(--muted-foreground)]">JSON configuration</span>
+          <h3 className="font-semibold">Backup</h3>
         </div>
         <div className="p-5 space-y-4">
-          <p className="text-sm text-[color:var(--muted-foreground)]">
-            Export your lock rules to a JSON file for backup or bulk editing. Import a previously exported file.
-          </p>
           <div className="flex items-center gap-3">
             <button onClick={async () => {
               clearMessages();
@@ -445,7 +325,7 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
               }
             }} className="px-4 py-2 rounded-lg text-sm bg-surface border border-surface-border flex items-center gap-2 hover:bg-surface-active">
               <Download className="w-4 h-4" />
-              Export to File
+              Export
             </button>
             <input
               ref={importRef}
@@ -470,26 +350,9 @@ export function VaultPage({ config, refresh }: { config: VaultConfigDto | null; 
                     className="px-4 py-2 rounded-lg text-sm font-medium text-[color:var(--primary-foreground)] flex items-center gap-2 glow-cyan"
                     style={{ background: "var(--gradient-brand)" }}>
               <Upload className="w-4 h-4" />
-              Import from File
+              Import
             </button>
           </div>
-          <div className="flex items-center gap-2 text-xs text-[color:var(--muted-foreground)]">
-            <input type="checkbox" id="copy-export" className="accent-[color:var(--primary)]" />
-            <label htmlFor="copy-export">Copy to clipboard instead</label>
-          </div>
-          <button onClick={async () => {
-            clearMessages();
-            try {
-              const json = await exportConfig();
-              await navigator.clipboard.writeText(json);
-              setSuccess("Config copied to clipboard. It contains only lock settings (no passwords).");
-            } catch (e: any) {
-              setError("Copy failed: " + e);
-            }
-          }} className="px-4 py-2 rounded-lg text-sm bg-surface border border-surface-border flex items-center gap-2 hover:bg-surface-active">
-            <Upload className="w-4 h-4" />
-            Copy to Clipboard
-          </button>
         </div>
       </div>
     </div>

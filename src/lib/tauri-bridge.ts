@@ -547,3 +547,11 @@ export async function vaultExtractFile(id: string, destDir: string): Promise<str
 export async function vaultDeleteFile(id: string): Promise<void> {
   return invoke("cmd_vault_delete_file", { id });
 }
+
+export async function filterUnlock(messageId: number, requestId: number, password: string): Promise<string> {
+  return invoke("cmd_filter_unlock", { messageId, requestId, password });
+}
+
+export async function filterDeny(messageId: number, requestId: number): Promise<string> {
+  return invoke("cmd_filter_deny", { messageId, requestId });
+}

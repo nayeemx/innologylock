@@ -1,0 +1,41 @@
+;
+; InnologyLock Filter Driver - Installation INF
+;
+[Version]
+Signature   = "$WINDOWS NT$"
+Class       = ActivityMonitor
+ClassGuid   = {4D36E974-E325-11CE-BFC1-08002BE10318}
+Provider    = %ProviderString%
+CatalogFile = innologylock_filt.cat
+DriverVer   = 09/02/2026,1.0.0.0
+
+[DestinationDirs]
+DefaultDestDir = 12
+
+[SourceDisksNames]
+1 = %DiskName%,,,""
+
+[SourceDisksFiles]
+innologylock_filt.sys = 1,,
+
+[DefaultInstall.NTamd64]
+CopyFiles = InnologyLock.CopyFiles
+
+[InnologyLock.CopyFiles]
+innologylock_filt.sys
+
+[DefaultInstall.NTamd64.Services]
+AddService = InnologyLockFilt,,InnologyLock.Service
+
+[InnologyLock.Service]
+DisplayName    = %ServiceDescription%
+ServiceType    = 1
+StartType      = 3
+ErrorControl   = 1
+ServiceBinary  = %12%\innologylock_filt.sys
+Dependencies   = FltMgr
+
+[Strings]
+ProviderString  = "InnologyBD"
+ServiceDescription = "InnologyLock File System Filter Driver"
+DiskName        = "InnologyLock Filter Driver Installation Disk"

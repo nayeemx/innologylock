@@ -7,6 +7,7 @@ use windows_service::service_control_handler::{self, ServiceControlHandlerResult
 use windows_service::service_dispatcher;
 
 use InnologyLock_svc::acl;
+use InnologyLock_svc::filter_bridge;
 use InnologyLock_svc::ipc::{SvcRequest, SvcResponse, PIPE_NAME};
 use InnologyLock_svc::state::{self, LockedItemsState};
 use InnologyLock_svc::vault;
@@ -39,6 +40,9 @@ fn run_standalone() -> Result<(), Box<dyn std::error::Error>> {
 
     let locked_acl = locked.clone();
     std::thread::spawn(move || acl_enforcement_thread(locked_acl));
+
+    let locked_filter = locked.clone();
+    std::thread::spawn(move || filter_bridge::filter_bridge_thread(locked_filter));
 
     eprintln!("[Svc-Standalone] Running. Press Ctrl+C to stop.");
     while !STOP_FLAG.load(Ordering::Relaxed) {
@@ -92,9 +96,13 @@ fn acl_enforcement_thread(locked: Arc<Mutex<LockedItemsState>>) {
         for item in &s.locked_items {
             if item.item_type == "drive" {
                 let letter = item.path.chars().next().unwrap_or('?').to_string();
-                let _ = acl::lock_drive(&letter);
+                if let Err(e) = acl::lock_drive(&letter) {
+                    log(&format!("Enforcement: lock_drive {} failed: {}", letter, e));
+                }
             } else if std::path::Path::new(&item.path).exists() {
-                let _ = acl::apply_lock(&item.path);
+                if let Err(e) = acl::apply_lock(&item.path) {
+                    log(&format!("Enforcement: apply_lock {} failed: {}", item.path, e));
+                }
             }
         }
     }
@@ -252,14 +260,19 @@ fn process_request(request: SvcRequest, locked: &Arc<Mutex<LockedItemsState>>) -
                 s.locked_items.push(state::LockedItem {
                     item_type: "file".to_string(), path: path.clone(), display_name: display_name.clone(),
                 });
-                let _ = state::save_state(&s);
+                if let Err(e) = state::save_state(&s) {
+                    log(&format!("save_state failed for {}: {}", path, e));
+                }
             }
             drop(s);
             match acl::apply_lock(&path) {
-                Ok(()) => SvcResponse::Ok { message: format!("Locked: {}", path) },
+                Ok(()) => {
+                    log(&format!("LockFile OK: {}", path));
+                    SvcResponse::Ok { message: format!("Locked: {}", path) }
+                }
                 Err(e) => {
-                    log(&format!("ACL warning for {}: {}", path, e));
-                    SvcResponse::Ok { message: format!("Locked (ACL pending): {}", path) }
+                    log(&format!("LockFile FAILED: {} err={}", path, e));
+                    SvcResponse::Error { message: format!("ACL lock failed: {}", e) }
                 }
             }
         }
@@ -270,14 +283,19 @@ fn process_request(request: SvcRequest, locked: &Arc<Mutex<LockedItemsState>>) -
                 s.locked_items.push(state::LockedItem {
                     item_type: "folder".to_string(), path: path.clone(), display_name: display_name.clone(),
                 });
-                let _ = state::save_state(&s);
+                if let Err(e) = state::save_state(&s) {
+                    log(&format!("save_state failed for {}: {}", path, e));
+                }
             }
             drop(s);
             match acl::apply_lock(&path) {
-                Ok(()) => SvcResponse::Ok { message: format!("Locked: {}", path) },
+                Ok(()) => {
+                    log(&format!("LockFolder OK: {}", path));
+                    SvcResponse::Ok { message: format!("Locked: {}", path) }
+                }
                 Err(e) => {
-                    log(&format!("ACL warning for {}: {}", path, e));
-                    SvcResponse::Ok { message: format!("Locked (ACL pending): {}", path) }
+                    log(&format!("LockFolder FAILED: {} err={}", path, e));
+                    SvcResponse::Error { message: format!("ACL lock failed: {}", e) }
                 }
             }
         }
@@ -289,14 +307,19 @@ fn process_request(request: SvcRequest, locked: &Arc<Mutex<LockedItemsState>>) -
                 s.locked_items.push(state::LockedItem {
                     item_type: "drive".to_string(), path: path.clone(), display_name,
                 });
-                let _ = state::save_state(&s);
+                if let Err(e) = state::save_state(&s) {
+                    log(&format!("save_state failed for drive {}: {}", drive_letter, e));
+                }
             }
             drop(s);
             match acl::lock_drive(&drive_letter) {
-                Ok(()) => SvcResponse::Ok { message: format!("Drive {} locked", drive_letter) },
+                Ok(()) => {
+                    log(&format!("LockDrive OK: {}", drive_letter));
+                    SvcResponse::Ok { message: format!("Drive {} locked", drive_letter) }
+                }
                 Err(e) => {
-                    log(&format!("ACL warning for drive {}: {}", drive_letter, e));
-                    SvcResponse::Ok { message: format!("Drive {} locked (ACL pending)", drive_letter) }
+                    log(&format!("LockDrive FAILED: {} err={}", drive_letter, e));
+                    SvcResponse::Error { message: format!("ACL lock failed for drive {}: {}", drive_letter, e) }
                 }
             }
         }
@@ -308,14 +331,19 @@ fn process_request(request: SvcRequest, locked: &Arc<Mutex<LockedItemsState>>) -
                     item_type: "app".to_string(), path: path.clone(),
                     display_name: if display_name.is_empty() { name } else { display_name },
                 });
-                let _ = state::save_state(&s);
+                if let Err(e) = state::save_state(&s) {
+                    log(&format!("save_state failed for app {}: {}", path, e));
+                }
             }
             drop(s);
             match acl::apply_lock(&path) {
-                Ok(()) => SvcResponse::Ok { message: "App locked".to_string() },
+                Ok(()) => {
+                    log(&format!("LockApp OK: {}", path));
+                    SvcResponse::Ok { message: "App locked".to_string() }
+                }
                 Err(e) => {
-                    log(&format!("ACL warning for app {}: {}", path, e));
-                    SvcResponse::Ok { message: "App locked (ACL pending)".to_string() }
+                    log(&format!("LockApp FAILED: {} err={}", path, e));
+                    SvcResponse::Error { message: format!("ACL lock failed for app: {}", e) }
                 }
             }
         }
@@ -326,22 +354,36 @@ fn process_request(request: SvcRequest, locked: &Arc<Mutex<LockedItemsState>>) -
             }
             if path.ends_with(":\\") || (path.len() == 2 && path.ends_with(':')) {
                 let letter = path.chars().next().unwrap_or('?').to_string();
-                let _ = acl::unlock_drive(&letter);
+                if let Err(e) = acl::unlock_drive(&letter) {
+                    log(&format!("UnlockDrive FAILED: {} err={}", letter, e));
+                } else {
+                    log(&format!("UnlockDrive OK: {}", letter));
+                }
             } else {
-                let _ = acl::remove_lock(&path);
+                if let Err(e) = acl::remove_lock(&path) {
+                    log(&format!("UnlockItem FAILED: {} err={}", path, e));
+                } else {
+                    log(&format!("UnlockItem OK: {}", path));
+                }
             }
             let mut s = locked.lock().unwrap();
             s.locked_items.retain(|i| i.path != path);
-            let _ = state::save_state(&s);
+            if let Err(e) = state::save_state(&s) {
+                log(&format!("save_state failed after unlock: {}", e));
+            }
             SvcResponse::Ok { message: format!("Unlocked: {}", path) }
         }
 
         SvcRequest::ForceRemoveLockedItem { path } => {
             log(&format!("ForceRemoveLockedItem: {}", path));
-            let _ = acl::remove_lock(&path);
+            if let Err(e) = acl::remove_lock(&path) {
+                log(&format!("ForceRemove ACL FAILED: {} err={}", path, e));
+            }
             let mut s = locked.lock().unwrap();
             s.locked_items.retain(|i| i.path != path);
-            let _ = state::save_state(&s);
+            if let Err(e) = state::save_state(&s) {
+                log(&format!("save_state failed after force remove: {}", e));
+            }
             SvcResponse::Ok { message: format!("Force removed: {}", path) }
         }
 
@@ -352,6 +394,43 @@ fn process_request(request: SvcRequest, locked: &Arc<Mutex<LockedItemsState>>) -
             }
             SvcResponse::Ok { message: "Vault synced".to_string() }
         }
+
+        SvcRequest::AddFilterPath { path } => {
+            match InnologyLock_svc::filter_bridge::add_filter_path(&path) {
+                Ok(()) => SvcResponse::Ok { message: format!("Filter path added: {}", path) },
+                Err(e) => SvcResponse::Error { message: format!("AddFilterPath failed: {}", e) },
+            }
+        }
+
+        SvcRequest::RemoveFilterPath { path } => {
+            match InnologyLock_svc::filter_bridge::remove_filter_path(&path) {
+                Ok(()) => SvcResponse::Ok { message: format!("Filter path removed: {}", path) },
+                Err(e) => SvcResponse::Error { message: format!("RemoveFilterPath failed: {}", e) },
+            }
+        }
+
+        SvcRequest::ClearFilterPaths => {
+            match InnologyLock_svc::filter_bridge::clear_filter_paths() {
+                Ok(()) => SvcResponse::Ok { message: "All filter paths cleared".to_string() },
+                Err(e) => SvcResponse::Error { message: format!("ClearFilterPaths failed: {}", e) },
+            }
+        }
+
+        SvcRequest::SetFilterEnabled { enabled } => {
+            match InnologyLock_svc::filter_bridge::set_filter_enabled(enabled) {
+                Ok(()) => SvcResponse::Ok { message: format!("Filter enabled={}", enabled) },
+                Err(e) => SvcResponse::Error { message: format!("SetFilterEnabled failed: {}", e) },
+            }
+        }
+
+        SvcRequest::DriverAccessRequest { .. } => {
+            SvcResponse::Error { message: "DriverAccessRequest should not come from client".to_string() }
+        }
+
+        SvcRequest::DriverReply { .. } => {
+            SvcResponse::Error { message: "DriverReply should not come from client".to_string() }
+        }
+
         SvcRequest::Shutdown => {
             STOP_FLAG.store(true, Ordering::Relaxed);
             SvcResponse::Ok { message: "Shutting down".to_string() }

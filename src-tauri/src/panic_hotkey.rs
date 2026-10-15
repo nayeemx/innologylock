@@ -3,7 +3,7 @@ use windows_sys::Win32::System::LibraryLoader::*;
 use windows_sys::Win32::Foundation::*;
 
 const MOD_ALT: u32 = 0x0001;
-const MOD_WIN: u32 = 0x0800;
+const MOD_CONTROL: u32 = 0x0002;
 
 type RegisterHotKeyFn = unsafe extern "system" fn(hwnd: isize, id: i32, fs_modifiers: u32, vk: u32) -> i32;
 
@@ -15,7 +15,7 @@ pub fn register_panic_hotkey() -> Result<(), String> {
         let addr = GetProcAddress(user32, b"RegisterHotKey\0".as_ptr());
         if let Some(func) = addr {
             let register_hotkey: RegisterHotKeyFn = std::mem::transmute(func);
-            let result = register_hotkey(0, 1, MOD_WIN | MOD_ALT, 0x4C);
+            let result = register_hotkey(0, 1, MOD_CONTROL | MOD_ALT, 0x4C);
             if result == 0 {
                 let err = GetLastError();
                 return Err(format!("Failed to register hotkey (error {})", err));

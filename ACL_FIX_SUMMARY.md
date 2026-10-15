@@ -1,7 +1,7 @@
-# ACL Recursive Unlock Fix - Summary
+﻿# ACL Recursive Unlock Fix - Summary
 
 ## Problem
-When unlocking a folder in OmniLock, child files inside the folder remained inaccessible because:
+When unlocking a folder in InnologyLock, child files inside the folder remained inaccessible because:
 1. The recursive unlock function used `std::fs::read_dir()` which fails with access denied on locked folders
 2. Even with `SeTakeOwnershipPrivilege`, Rust's `read_dir` cannot enumerate files when the DACL denies access
 3. This left child files with the restricted ACL (Admins+SYSTEM only) even after folder unlock

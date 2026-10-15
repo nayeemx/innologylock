@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "innologylock"
 version = "0.0.39"
 authors = ["InnologyBD <support@innologybd.com>"]
@@ -56,4 +56,5 @@ windows = { version = "0.61", features = [
     "Storage_Search",
     "Foundation"
 ] }
+once_cell = "1.19"
 windows-collections = "0.2.0"

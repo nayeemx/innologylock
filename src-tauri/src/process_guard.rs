@@ -86,7 +86,7 @@ pub fn relock_all_unlocked_folders() {
 
     for path in &paths {
         if let Some(ref k) = key {
-            let _ = crate::file_locker::lock_folder(path, k);
+            let _ = crate::file_locker::lock_folder_as_container(path, k);
         }
     }
 
@@ -333,7 +333,7 @@ pub fn start_file_access_monitor(app_handle: tauri::AppHandle) {
                 let mut unlocked_guard = match UNLOCKED_FOLDERS.get_or_init(|| Mutex::new(Vec::new())).lock() {
                     Ok(g) => g,
                     Err(_) => {
-                        std::thread::sleep(std::time::Duration::from_secs(2));
+            std::thread::sleep(std::time::Duration::from_millis(500));
                         continue;
                     }
                 };
@@ -366,7 +366,7 @@ pub fn start_file_access_monitor(app_handle: tauri::AppHandle) {
                     let uf = unlocked_guard.remove(i);
                     clear_prompted_folder(&uf.path);
                     if let Some(ref k) = crate::get_active_file_key() {
-                        let _ = crate::file_locker::lock_folder(&uf.path, k);
+                        let _ = crate::file_locker::lock_folder_as_container(&uf.path, k);
                     }
                 }
             }
