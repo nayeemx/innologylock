@@ -8,7 +8,7 @@
 - **Last Updated**: 2026-10-15
 - **2026-10-15 scan session**: external scan verdict confirmed — signing passwords removed from all tracked docs (private key was never committed); rename to InnologyLock finished (zero old-name matches in source; `OLCK`/`OMNI` bytes + biometric entropy kept for compat). See CHANGELOG `[Unreleased]` + DEV_LOG 2026-10-15 entry.
 - **Project Name**: **InnologyLock** (rename completed 2026-08-26)
-- **Remaining manual steps**: (1) Rename GitHub repo to innologylock (project folder already renamed). (2) Rotate the signing password — both past values are in git history (see 2026-10-15 entries in CHANGELOG + DEV_LOG). (3) Install WDK + build driver (see "Next Session").
+- **Remaining manual steps**: (1) GitHub repo renamed to innologylock ✅ (local remote URL updated 2026-10-15). (2) Rotate the signing password — both past values are in git history (see 2026-10-15 entries in CHANGELOG + DEV_LOG; rotation blocked — key file matches neither recorded password, awaiting user-supplied password). (3) Install WDK + build driver (see "Next Session").
 - **Build status**: ✅ `cargo check` (src-tauri) — 0 errors. ✅ `cargo check` (service) — 0 errors (1 snake_case warning). ✅ `npx tsc --noEmit` — clean. ⏳ Driver build requires WDK.
 - **Runtime status**: App compiles, runs, service starts in standalone mode. **Lock/unlock uses AES-256-GCM encryption (file_locker) + minifilter driver blocks Explorer access to locked paths.**
 
